@@ -6,7 +6,7 @@ const app = express();
 app.use(express.static("public"));
 app.use(bodyParser.json());
 
-const db = new sqlite3.Database("database.db");
+const db = new sqlite3.Database("chinook.db");
 
 // Create table
 db.run(`CREATE TABLE IF NOT EXISTS users (
