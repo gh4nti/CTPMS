@@ -1,6 +1,6 @@
 const form = document.getElementById("patient-form");
 const list = document.getElementById("list");
-const status = document.getElementById("status");
+const status = document.getElementById("form-status");
 const count = document.getElementById("count");
 const fullNameInput = document.getElementById("fullName");
 
@@ -125,7 +125,12 @@ form.addEventListener("submit", async (event) => {
 
 		if (!response.ok) {
 			const errorBody = await response.json().catch(() => ({}));
-			throw new Error(errorBody.error || "Request failed");
+			const detailSuffix = errorBody.details
+				? ` (${errorBody.details})`
+				: "";
+			throw new Error(
+				`${errorBody.error || "Request failed"}${detailSuffix}`,
+			);
 		}
 
 		form.reset();

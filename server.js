@@ -7,9 +7,10 @@ app.use(express.static("public"));
 app.use(bodyParser.json());
 
 const db = new sqlite3.Database("chinook.db");
+const TABLE_NAME = "trial_patients";
 
 db.serialize(() => {
-	db.run(`CREATE TABLE IF NOT EXISTS patients (
+	db.run(`CREATE TABLE IF NOT EXISTS ${TABLE_NAME} (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		full_name TEXT NOT NULL,
 		dob TEXT NOT NULL,
@@ -21,22 +22,6 @@ db.serialize(() => {
 		notes TEXT,
 		created_at TEXT NOT NULL DEFAULT (datetime('now'))
 	)`);
-
-	// Backward-compatible migration for earlier schema versions.
-	db.run("ALTER TABLE patients ADD COLUMN primary_condition TEXT", (err) => {
-		if (err && !String(err.message).includes("duplicate column name")) {
-			console.error("Migration error:", err.message);
-		}
-	});
-
-	db.run(
-		"UPDATE patients SET primary_condition = condition WHERE (primary_condition IS NULL OR primary_condition = '')",
-		(err) => {
-			if (err && !String(err.message).includes("no such column")) {
-				console.error("Migration error:", err.message);
-			}
-		},
-	);
 });
 
 app.get("/patients", (req, res) => {
@@ -52,7 +37,7 @@ app.get("/patients", (req, res) => {
 			phone,
 			notes,
 			created_at
-		 FROM patients
+		 FROM ${TABLE_NAME}
 		 ORDER BY datetime(created_at) DESC, id DESC`,
 		[],
 		(err, rows) => {
@@ -87,7 +72,7 @@ app.post("/patients", (req, res) => {
 	}
 
 	const sql = `
-		INSERT INTO patients (
+		INSERT INTO ${TABLE_NAME} (
 			full_name,
 			dob,
 			gender,
