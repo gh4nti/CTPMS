@@ -8,24 +8,121 @@ app.use(bodyParser.json());
 
 const db = new sqlite3.Database("chinook.db");
 
-// Create table
-db.run(`CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT
-)`);
+db.serialize(() => {
+	db.run(`CREATE TABLE IF NOT EXISTS patients (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		full_name TEXT NOT NULL,
+		dob TEXT NOT NULL,
+		gender TEXT NOT NULL,
+		trial_code TEXT NOT NULL,
+		primary_condition TEXT NOT NULL,
+		enrollment_status TEXT NOT NULL,
+		phone TEXT,
+		notes TEXT,
+		created_at TEXT NOT NULL DEFAULT (datetime('now'))
+	)`);
 
-// API: Get users
-app.get("/users", (req, res) => {
-	db.all("SELECT * FROM users", [], (err, rows) => {
-		res.json(rows);
+	// Backward-compatible migration for earlier schema versions.
+	db.run("ALTER TABLE patients ADD COLUMN primary_condition TEXT", (err) => {
+		if (err && !String(err.message).includes("duplicate column name")) {
+			console.error("Migration error:", err.message);
+		}
 	});
+
+	db.run(
+		"UPDATE patients SET primary_condition = condition WHERE (primary_condition IS NULL OR primary_condition = '')",
+		(err) => {
+			if (err && !String(err.message).includes("no such column")) {
+				console.error("Migration error:", err.message);
+			}
+		},
+	);
 });
 
-// API: Add user
-app.post("/users", (req, res) => {
-	const { name } = req.body;
-	db.run("INSERT INTO users(name) VALUES(?)", [name]);
-	res.send("User added");
+app.get("/patients", (req, res) => {
+	db.all(
+		`SELECT
+			id,
+			full_name,
+			dob,
+			gender,
+			trial_code,
+			primary_condition AS patient_condition,
+			enrollment_status,
+			phone,
+			notes,
+			created_at
+		 FROM patients
+		 ORDER BY datetime(created_at) DESC, id DESC`,
+		[],
+		(err, rows) => {
+			if (err) {
+				res.status(500).json({
+					error: "Could not fetch patients",
+					details: err.message,
+				});
+				return;
+			}
+
+			res.json(rows);
+		},
+	);
+});
+
+app.post("/patients", (req, res) => {
+	const {
+		fullName,
+		dob,
+		gender,
+		trialCode,
+		condition,
+		status,
+		phone = "",
+		notes = "",
+	} = req.body || {};
+
+	if (!fullName || !dob || !gender || !trialCode || !condition || !status) {
+		res.status(400).json({ error: "Missing required fields" });
+		return;
+	}
+
+	const sql = `
+		INSERT INTO patients (
+			full_name,
+			dob,
+			gender,
+			trial_code,
+			primary_condition,
+			enrollment_status,
+			phone,
+			notes
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`;
+
+	db.run(
+		sql,
+		[
+			String(fullName).trim(),
+			String(dob).trim(),
+			String(gender).trim(),
+			String(trialCode).trim(),
+			String(condition).trim(),
+			String(status).trim(),
+			String(phone).trim(),
+			String(notes).trim(),
+		],
+		function insertPatient(err) {
+			if (err) {
+				res.status(500).json({
+					error: "Could not save patient",
+					details: err.message,
+				});
+				return;
+			}
+
+			res.status(201).json({ id: this.lastID, message: "Patient added" });
+		},
+	);
 });
 
 app.listen(3000, () => console.log("Server running on port 3000"));

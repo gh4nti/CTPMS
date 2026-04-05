@@ -3,32 +3,113 @@
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<title>User Directory</title>
+		<title>CTPMS Patient Intake</title>
 		<link rel="stylesheet" href="style.css" />
 	</head>
 	<body>
 		<main class="app-shell">
 			<section class="hero-card">
 				<div class="hero-copy">
-					<p class="eyebrow">SQLite + Express</p>
-					<h1>User Directory</h1>
+					<p class="eyebrow">Clinical Trial Patient Management</p>
+					<h1>Enroll Patient</h1>
 					<p class="lede">
-						A simple place to collect names, keep them organized,
-						and grow into a full admin tool.
+						Capture enrollment-ready patient records and push them
+						to your database from a clean operations dashboard.
 					</p>
 				</div>
 
-				<form id="user-form" class="user-form">
-					<label class="field-label" for="name">Name</label>
-					<div class="field-row">
+				<form id="patient-form" class="patient-form">
+					<div class="field-grid">
+						<label class="field-label" for="fullName"
+							>Full name</label
+						>
 						<input
 							type="text"
-							id="name"
-							name="name"
-							placeholder="Enter a name"
+							id="fullName"
+							name="fullName"
+							placeholder="Jane Doe"
+							autocomplete="off"
+							required
+						/>
+
+						<label class="field-label" for="dob"
+							>Date of birth</label
+						>
+						<input type="date" id="dob" name="dob" required />
+
+						<label class="field-label" for="gender">Gender</label>
+						<select id="gender" name="gender" required>
+							<option value="" selected disabled>
+								Select gender
+							</option>
+							<option value="female">Female</option>
+							<option value="male">Male</option>
+							<option value="non-binary">Non-binary</option>
+							<option value="prefer-not-to-say">
+								Prefer not to say
+							</option>
+						</select>
+
+						<label class="field-label" for="trialCode"
+							>Trial code</label
+						>
+						<input
+							type="text"
+							id="trialCode"
+							name="trialCode"
+							placeholder="CT-ONC-204"
+							autocomplete="off"
+							required
+						/>
+
+						<label class="field-label" for="condition"
+							>Primary condition</label
+						>
+						<input
+							type="text"
+							id="condition"
+							name="condition"
+							placeholder="Metastatic breast cancer"
+							autocomplete="off"
+							required
+						/>
+
+						<label class="field-label" for="status"
+							>Enrollment status</label
+						>
+						<select id="status" name="status" required>
+							<option value="screening" selected>
+								Screening
+							</option>
+							<option value="eligible">Eligible</option>
+							<option value="enrolled">Enrolled</option>
+							<option value="hold">On hold</option>
+						</select>
+
+						<label class="field-label" for="phone"
+							>Contact phone</label
+						>
+						<input
+							type="tel"
+							id="phone"
+							name="phone"
+							placeholder="+1 555 123 4567"
 							autocomplete="off"
 						/>
-						<button type="submit">Add user</button>
+
+						<label class="field-label" for="notes"
+							>Eligibility notes</label
+						>
+						<textarea
+							id="notes"
+							name="notes"
+							placeholder="Comorbidities, prior therapies, or coordinator comments"
+							rows="3"
+						></textarea>
+					</div>
+
+					<div class="field-row">
+						<button type="submit">Add patient record</button>
 					</div>
 					<p id="status" class="status" aria-live="polite"></p>
 				</form>
@@ -36,10 +117,10 @@
 
 			<section class="list-card" aria-labelledby="list-title">
 				<div class="list-header">
-					<h2 id="list-title">Current users</h2>
-					<span id="count" class="count">0 users</span>
+					<h2 id="list-title">Active Patient Records</h2>
+					<span id="count" class="count">0 patients</span>
 				</div>
-				<ul id="list" class="user-list"></ul>
+				<ul id="list" class="patient-list"></ul>
 			</section>
 		</main>
 

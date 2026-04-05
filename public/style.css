@@ -125,6 +125,21 @@ h1 {
 	gap: 12px;
 }
 
+.patient-form {
+	background: var(--surface-strong);
+	border: 1px solid rgba(32, 41, 72, 0.08);
+	border-radius: var(--radius-lg);
+	padding: 18px;
+	display: grid;
+	gap: 12px;
+}
+
+.field-grid {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 8px;
+}
+
 .field-label {
 	font-size: 0.92rem;
 	font-weight: 700;
@@ -161,6 +176,33 @@ input:focus {
 	outline: none;
 	border-color: rgba(31, 94, 255, 0.42);
 	box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+select,
+textarea {
+	width: 100%;
+	border: 1px solid rgba(32, 41, 72, 0.14);
+	border-radius: var(--radius-md);
+	padding: 12px 14px;
+	font: inherit;
+	font-size: 1rem;
+	color: var(--text);
+	background: rgba(255, 255, 255, 0.9);
+	transition:
+		border-color 0.2s ease,
+		box-shadow 0.2s ease;
+}
+
+select:focus,
+textarea:focus {
+	outline: none;
+	border-color: rgba(31, 94, 255, 0.42);
+	box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+textarea {
+	resize: vertical;
+	min-height: 88px;
 }
 
 button {
@@ -235,7 +277,23 @@ button:active {
 	gap: 12px;
 }
 
+.patient-list {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	display: grid;
+	gap: 12px;
+}
+
 .user-item,
+.empty-state {
+	border: 1px solid rgba(32, 41, 72, 0.1);
+	border-radius: var(--radius-lg);
+	background: rgba(255, 255, 255, 0.82);
+	padding: 16px 18px;
+}
+
+.patient-item,
 .empty-state {
 	border: 1px solid rgba(32, 41, 72, 0.1);
 	border-radius: var(--radius-lg);
@@ -253,7 +311,22 @@ button:active {
 		background 0.18s ease;
 }
 
+.patient-item {
+	display: grid;
+	gap: 10px;
+	transition:
+		transform 0.18s ease,
+		border-color 0.18s ease,
+		background 0.18s ease;
+}
+
 .user-item:hover {
+	transform: translateY(-1px);
+	border-color: rgba(31, 94, 255, 0.2);
+	background: rgba(255, 255, 255, 0.95);
+}
+
+.patient-item:hover {
 	transform: translateY(-1px);
 	border-color: rgba(31, 94, 255, 0.2);
 	background: rgba(255, 255, 255, 0.95);
@@ -275,6 +348,43 @@ button:active {
 .user-name {
 	font-size: 1rem;
 	font-weight: 700;
+}
+
+.patient-heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+}
+
+.patient-name {
+	font-size: 1.02rem;
+	font-weight: 800;
+	letter-spacing: -0.02em;
+}
+
+.status-pill {
+	padding: 4px 10px;
+	border-radius: 999px;
+	font-size: 0.76rem;
+	font-weight: 800;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	background: rgba(31, 94, 255, 0.12);
+	color: var(--accent-strong);
+}
+
+.patient-meta {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+	gap: 8px 12px;
+	font-size: 0.92rem;
+	color: var(--muted);
+}
+
+.meta-key {
+	font-weight: 700;
+	color: var(--text);
 }
 
 .empty-state {
