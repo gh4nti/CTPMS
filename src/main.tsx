@@ -5,6 +5,7 @@ import App from "./App";
 import Appointments from "./Appointments";
 import AllPatients from "./AllPatients";
 import PatientProfile from "./PatientProfile";
+import ReportsDashboard from "./ReportsDashboard";
 import { Billing } from "./features/billing";
 import ProtectedRoute from "./ProtectedRoute";
 import {
@@ -153,6 +154,23 @@ function AppWrapper() {
 							error={error}
 						>
 							<Appointments currentUser={authUser} />
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="/reports"
+					element={
+						<ProtectedRoute
+							isAuthenticated={isAuthenticated}
+							authUser={authUser}
+							onLogin={handleLogin}
+							isLoading={isLoading}
+							error={error}
+						>
+							<ReportsDashboard
+								onLogout={handleLogout}
+								currentUser={authUser}
+							/>
 						</ProtectedRoute>
 					}
 				/>

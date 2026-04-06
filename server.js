@@ -1664,6 +1664,210 @@ app.get("/payments/:id", (req, res) => {
 	);
 });
 
+app.get("/reports/dashboard", (req, res) => {
+	const rawMonths = Number(req.query.months);
+	const months =
+		Number.isInteger(rawMonths) && rawMonths > 0
+			? Math.min(rawMonths, 24)
+			: 12;
+
+	db.all(
+		`WITH RECURSIVE month_series(month_start, idx) AS (
+			SELECT date('now', 'start of month', ?), 0
+			UNION ALL
+			SELECT date(month_start, '+1 month'), idx + 1
+			FROM month_series
+			WHERE idx < ? - 1
+		)
+		SELECT
+			strftime('%Y-%m', ms.month_start) AS month,
+			COUNT(p.patient_id) AS count
+		FROM month_series ms
+		LEFT JOIN patients p
+			ON strftime('%Y-%m', p.created_at) = strftime('%Y-%m', ms.month_start)
+		GROUP BY ms.month_start
+		ORDER BY ms.month_start ASC`,
+		[`-${months - 1} months`, months],
+		(monthlyErr, monthlyRows) => {
+			if (monthlyErr) {
+				res.status(500).json({
+					error: "Could not fetch monthly patient trends",
+					details: monthlyErr.message,
+				});
+				return;
+			}
+
+			db.get(
+				`SELECT
+					SUM(CASE
+						WHEN LOWER(COALESCE(status, 'scheduled')) != 'cancelled'
+							AND datetime(COALESCE(end_time, start_time)) <= datetime('now')
+						THEN 1 ELSE 0 END
+					) AS completed_count,
+					SUM(CASE
+						WHEN LOWER(COALESCE(status, 'scheduled')) = 'cancelled'
+							AND datetime(COALESCE(end_time, start_time)) <= datetime('now')
+						THEN 1 ELSE 0 END
+					) AS cancelled_count
+				FROM appointments`,
+				[],
+				(appointmentErr, appointmentRow) => {
+					if (appointmentErr) {
+						res.status(500).json({
+							error: "Could not fetch appointment completion stats",
+							details: appointmentErr.message,
+						});
+						return;
+					}
+
+					db.get(
+						`SELECT
+							COALESCE(SUM(CASE WHEN LOWER(COALESCE(status, 'pending')) != 'cancelled' THEN amount ELSE 0 END), 0) AS total_invoiced,
+							COALESCE(SUM(CASE WHEN LOWER(COALESCE(status, 'pending')) = 'cancelled' THEN amount ELSE 0 END), 0) AS total_cancelled,
+							COUNT(*) AS invoice_count
+						FROM invoices`,
+						[],
+						(invoiceErr, invoiceRow) => {
+							if (invoiceErr) {
+								res.status(500).json({
+									error: "Could not fetch revenue summary",
+									details: invoiceErr.message,
+								});
+								return;
+							}
+
+							db.get(
+								`SELECT
+									COALESCE(SUM(CASE WHEN LOWER(COALESCE(status, 'pending')) = 'completed' THEN amount ELSE 0 END), 0) AS total_collected,
+									COUNT(*) AS payment_count
+								FROM payments`,
+								[],
+								(paymentErr, paymentRow) => {
+									if (paymentErr) {
+										res.status(500).json({
+											error: "Could not fetch payment summary",
+											details: paymentErr.message,
+										});
+										return;
+									}
+
+									db.all(
+										`SELECT
+											COALESCE(NULLIF(TRIM(description), ''), 'Clinical Treatment Services') AS service,
+											COUNT(*) AS invoice_count,
+											COALESCE(SUM(amount), 0) AS revenue
+										FROM invoices
+										WHERE LOWER(COALESCE(status, 'pending')) != 'cancelled'
+										GROUP BY COALESCE(NULLIF(TRIM(description), ''), 'Clinical Treatment Services')
+										ORDER BY revenue DESC, invoice_count DESC
+										LIMIT 5`,
+										[],
+										(serviceErr, serviceRows) => {
+											if (serviceErr) {
+												res.status(500).json({
+													error: "Could not fetch top services",
+													details: serviceErr.message,
+												});
+												return;
+											}
+
+											const completedCount = Number(
+												appointmentRow?.completed_count ||
+													0,
+											);
+											const cancelledCount = Number(
+												appointmentRow?.cancelled_count ||
+													0,
+											);
+											const totalAppointments =
+												completedCount + cancelledCount;
+											const completionRate =
+												totalAppointments > 0
+													? (completedCount /
+															totalAppointments) *
+														100
+													: 0;
+
+											const totalInvoiced = Number(
+												invoiceRow?.total_invoiced || 0,
+											);
+											const totalCollected = Number(
+												paymentRow?.total_collected ||
+													0,
+											);
+											const outstanding = Math.max(
+												0,
+												totalInvoiced - totalCollected,
+											);
+
+											res.json({
+												new_patients_per_month: (
+													monthlyRows || []
+												).map((row) => ({
+													month: row.month,
+													count: Number(
+														row.count || 0,
+													),
+												})),
+												appointment_completion_rate: {
+													completed: completedCount,
+													cancelled: cancelledCount,
+													total: totalAppointments,
+													rate: Number(
+														completionRate.toFixed(
+															1,
+														),
+													),
+												},
+												revenue_summary: {
+													total_invoiced: Number(
+														totalInvoiced.toFixed(
+															2,
+														),
+													),
+													total_collected: Number(
+														totalCollected.toFixed(
+															2,
+														),
+													),
+													outstanding: Number(
+														outstanding.toFixed(2),
+													),
+													invoice_count: Number(
+														invoiceRow?.invoice_count ||
+															0,
+													),
+													payment_count: Number(
+														paymentRow?.payment_count ||
+															0,
+													),
+												},
+												top_services: (
+													serviceRows || []
+												).map((row) => ({
+													service: row.service,
+													invoice_count: Number(
+														row.invoice_count || 0,
+													),
+													revenue: Number(
+														Number(
+															row.revenue || 0,
+														).toFixed(2),
+													),
+												})),
+											});
+										},
+									);
+								},
+							);
+						},
+					);
+				},
+			);
+		},
+	);
+});
+
 app.get("/audit-logs", (req, res) => {
 	const actor = requirePermission(req, res, "audit:read");
 	if (!actor) {
