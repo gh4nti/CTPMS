@@ -1,82 +1,51 @@
 # Clinical Trial Patient Management System (CTPMS)
 
-CTPMS stands for Clinical Trial Patient Management System. It is a small clinical trial patient management app built with Express, SQLite, and a static browser UI. It lets staff create patient intake records and view the current list of enrolled or screening patients.
+CTPMS is now a React + Tailwind frontend backed by an Express + SQLite API.
 
-## Features
+## Stack
 
-- Patient intake form in the browser
-- Persistent storage in SQLite
-- Live patient list loaded from the server
-- Minimal JSON API for creating and reading records
-
-## Tech Stack
-
-- Node.js
+- React 18
+- Tailwind CSS
+- Vite 5
 - Express 5
 - SQLite3
-- Plain HTML, CSS, and JavaScript
 
-## Project Structure
+## Scripts
 
-- `server.js` - Express server and SQLite database setup
-- `public/index.html` - App shell and patient intake form
-- `public/script.js` - Frontend data loading and form submission logic
-- `public/style.css` - Visual styling for the dashboard
-- `package.json` - Project metadata and dependencies
+- `npm run dev`: runs Express API and Vite dev server together
+- `npm run dev:server`: runs only the API server on port 3000
+- `npm run dev:client`: runs only the React app on port 5173
+- `npm run build`: builds the React app to `dist/`
+- `npm start`: runs Express server (serves API and `dist/` if built)
 
-## Prerequisites
-
-- Node.js 18 or newer
-- npm
-
-## Installation
-
-Install dependencies from the project root:
+## Setup
 
 ```bash
 npm install
 ```
 
-## Run the App
-
-Start the server:
+## Development
 
 ```bash
-node server.js
+npm run dev
 ```
 
-Then open:
+Open `http://localhost:5173`.
 
-```text
-http://localhost:3000
+## Production-style Run
+
+```bash
+npm run build
+npm start
 ```
 
-The first run creates a local SQLite database file named `chinook.db` in the project root. The server also creates the `trial_patients` table automatically if it does not already exist.
+Open `http://localhost:3000`.
 
 ## API
 
 ### `GET /patients`
 
 Returns all patient records in reverse chronological order.
-
-Example response:
-
-```json
-[
-	{
-		"id": 1,
-		"full_name": "Jane Doe",
-		"dob": "1990-01-01",
-		"gender": "female",
-		"trial_code": "CT-ONC-204",
-		"patient_condition": "Metastatic breast cancer",
-		"enrollment_status": "screening",
-		"phone": "+1 555 123 4567",
-		"notes": "Initial review complete",
-		"created_at": "2026-04-06 12:34:56"
-	}
-]
-```
 
 ### `POST /patients`
 
@@ -91,9 +60,8 @@ Request body:
 	"gender": "female",
 	"trialCode": "CT-ONC-204",
 	"condition": "Metastatic breast cancer",
-	"status": "screening",
 	"phone": "+1 555 123 4567",
-	"notes": "Initial review complete"
+	"notes": "Eligible, consented"
 }
 ```
 
@@ -104,16 +72,25 @@ Required fields:
 - `gender`
 - `trialCode`
 - `condition`
-- `status`
 
 Optional fields:
 
 - `phone`
 - `notes`
 
-## Data Model
+The server computes `enrollment_status` automatically:
 
-Records are stored in the `trial_patients` table with these fields:
+- `hold`: notes contain hold signals like `on hold`, `pending`, `missing`, `incomplete`
+- `enrolled`: notes contain terms like `enrolled`, `consented`, `randomized`
+- `eligible`: notes contain eligibility signals or a phone number is present
+- `screening`: default fallback
+
+## Data Storage
+
+- SQLite DB file: `chinook.db`
+- Table: `trial_patients`
+
+Table columns:
 
 - `id`
 - `full_name`
@@ -125,9 +102,3 @@ Records are stored in the `trial_patients` table with these fields:
 - `phone`
 - `notes`
 - `created_at`
-
-## Notes
-
-- The frontend loads existing patients on page load.
-- Form submissions are sent as JSON to the Express API.
-- The app uses static files from the `public` folder, so no build step is required.
