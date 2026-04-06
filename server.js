@@ -8,105 +8,32 @@ const app = express();
 app.use(bodyParser.json());
 
 const db = new sqlite3.Database("chinook.db");
-const TABLE_NAME = "trial_patients";
-
-function normalizeText(value) {
-	return String(value || "")
-		.trim()
-		.toLowerCase();
-}
-
-function hasAnyKeyword(text, keywords) {
-	return keywords.some((keyword) => text.includes(keyword));
-}
-
-function assignEnrollmentStatus({
-	fullName,
-	dob,
-	gender,
-	trialCode,
-	condition,
-	notes,
-	phone,
-}) {
-	const noteText = normalizeText(notes);
-	const hasCoreFields = [fullName, dob, gender, trialCode, condition].every(
-		(field) => normalizeText(field).length > 0,
-	);
-
-	if (!hasCoreFields) {
-		return "screening";
-	}
-
-	if (
-		hasAnyKeyword(noteText, [
-			"on hold",
-			"hold",
-			"pending",
-			"missing",
-			"incomplete",
-			"defer",
-		])
-	) {
-		return "hold";
-	}
-
-	if (
-		hasAnyKeyword(noteText, [
-			"enrolled",
-			"consented",
-			"randomized",
-			"active treatment",
-		])
-	) {
-		return "enrolled";
-	}
-
-	if (
-		hasAnyKeyword(noteText, [
-			"eligible",
-			"meets criteria",
-			"qualified",
-			"screen pass",
-		]) ||
-		normalizeText(phone).length > 0
-	) {
-		return "eligible";
-	}
-
-	return "screening";
-}
-
-db.serialize(() => {
-	db.run(`CREATE TABLE IF NOT EXISTS ${TABLE_NAME} (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		full_name TEXT NOT NULL,
-		dob TEXT NOT NULL,
-		gender TEXT NOT NULL,
-		trial_code TEXT NOT NULL,
-		primary_condition TEXT NOT NULL,
-		enrollment_status TEXT NOT NULL,
-		phone TEXT,
-		notes TEXT,
-		created_at TEXT NOT NULL DEFAULT (datetime('now'))
-	)`);
-});
 
 app.get("/patients", (req, res) => {
 	db.all(
 		`SELECT
-			id,
-			full_name,
-			dob,
-			gender,
-			trial_code,
-			primary_condition AS patient_condition,
-			enrollment_status,
-			phone,
-			notes,
-			created_at
-		 FROM ${TABLE_NAME}
-		 ORDER BY datetime(created_at) DESC, id DESC`,
+			p.PatientID as id,
+			p.Name as full_name,
+			p.DateOfBirth as dob,
+			p.Gender as gender,
+			CAST(p.Phone AS TEXT) as phone,
+			COALESCE(p.Email, '') as email,
+			p.Height as height,
+			p.Weight as weight,
+			COALESCE(p.BloodGroup, '') as blood_group,
+			COALESCE(ptm.EligibilityStatus, 'screening') as enrollment_status,
+			datetime('now') as created_at
+		 FROM patients p
+		 LEFT JOIN (
+			SELECT m.PatientID, m.EligibilityStatus
+			FROM Patient_Trial_Match m
+			INNER JOIN (
+				SELECT PatientID, MAX(MatchID) AS LatestMatchID
+				FROM Patient_Trial_Match
+				GROUP BY PatientID
+			) latest ON latest.LatestMatchID = m.MatchID
+		 ) ptm ON p.PatientID = ptm.PatientID
+		 ORDER BY p.PatientID DESC`,
 		[],
 		(err, rows) => {
 			if (err) {
@@ -127,66 +54,97 @@ app.post("/patients", (req, res) => {
 		fullName,
 		dob,
 		gender,
-		trialCode,
-		condition,
-		phone = "",
-		notes = "",
+		phone,
+		email,
+		heightCm,
+		weightKg,
+		bloodGroup,
 	} = req.body || {};
 
-	if (!fullName || !dob || !gender || !trialCode || !condition) {
+	if (
+		!fullName ||
+		!dob ||
+		!gender ||
+		!phone ||
+		!email ||
+		heightCm === undefined ||
+		weightKg === undefined ||
+		!bloodGroup
+	) {
 		res.status(400).json({ error: "Missing required fields" });
 		return;
 	}
 
-	const computedStatus = assignEnrollmentStatus({
-		fullName,
-		dob,
-		gender,
-		trialCode,
-		condition,
-		phone,
-		notes,
-	});
+	const parsedHeight = Number(heightCm);
+	const parsedWeight = Number(weightKg);
 
-	const sql = `
-		INSERT INTO ${TABLE_NAME} (
-			full_name,
-			dob,
-			gender,
-			trial_code,
-			primary_condition,
-			enrollment_status,
-			phone,
-			notes
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`;
+	if (
+		!Number.isFinite(parsedHeight) ||
+		parsedHeight <= 0 ||
+		!Number.isFinite(parsedWeight) ||
+		parsedWeight <= 0
+	) {
+		res.status(400).json({
+			error: "Height and weight must be positive numbers",
+		});
+		return;
+	}
 
-	db.run(
-		sql,
-		[
-			String(fullName).trim(),
-			String(dob).trim(),
-			String(gender).trim(),
-			String(trialCode).trim(),
-			String(condition).trim(),
-			computedStatus,
-			String(phone).trim(),
-			String(notes).trim(),
-		],
-		function insertPatient(err) {
-			if (err) {
+	db.get(
+		`SELECT COALESCE(MAX(PatientID), 0) + 1 AS nextId FROM patients`,
+		[],
+		(nextIdError, nextIdRow) => {
+			if (nextIdError) {
 				res.status(500).json({
-					error: "Could not save patient",
-					details: err.message,
+					error: "Could not determine next patient ID",
+					details: nextIdError.message,
 				});
 				return;
 			}
 
-			res.status(201).json({
-				id: this.lastID,
-				message: "Patient added",
-				enrollmentStatus: computedStatus,
-			});
+			const nextId = Number(nextIdRow && nextIdRow.nextId);
+			const insertSql = `
+				INSERT INTO patients (
+					PatientID,
+					Name,
+					DateOfBirth,
+					Gender,
+					Phone,
+					Email,
+					Height,
+					Weight,
+					BloodGroup
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`;
+
+			db.run(
+				insertSql,
+				[
+					nextId,
+					String(fullName).trim(),
+					String(dob).trim(),
+					String(gender).trim(),
+					String(phone).trim(),
+					String(email).trim(),
+					parsedHeight,
+					parsedWeight,
+					String(bloodGroup).trim().toUpperCase(),
+				],
+				function insertPatient(err) {
+					if (err) {
+						res.status(500).json({
+							error: "Could not save patient",
+							details: err.message,
+						});
+						return;
+					}
+
+					res.status(201).json({
+						id: nextId,
+						message: "Patient added",
+					});
+				},
+			);
 		},
 	);
 });
@@ -195,7 +153,7 @@ const distPath = path.join(__dirname, "dist");
 if (fs.existsSync(distPath)) {
 	app.use(express.static(distPath));
 
-	app.get("*", (req, res, next) => {
+	app.use((req, res, next) => {
 		if (req.path.startsWith("/patients")) {
 			next();
 			return;

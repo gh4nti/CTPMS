@@ -1,4 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
 type EnrollmentStatus = "screening" | "eligible" | "enrolled" | "hold";
 
@@ -7,18 +8,18 @@ interface Patient {
 	full_name: string;
 	dob: string;
 	gender: string;
-	trial_code: string;
-	patient_condition: string;
-	enrollment_status: EnrollmentStatus;
 	phone: string;
-	notes: string;
+	email: string;
+	height: number | null;
+	weight: number | null;
+	blood_group: string;
+	enrollment_status: EnrollmentStatus;
 	created_at: string;
 }
 
 interface CreatePatientResponse {
 	id: number;
 	message: string;
-	enrollmentStatus: EnrollmentStatus;
 }
 
 interface ApiErrorBody {
@@ -30,20 +31,22 @@ interface FormState {
 	fullName: string;
 	dob: string;
 	gender: string;
-	trialCode: string;
-	condition: string;
 	phone: string;
-	notes: string;
+	email: string;
+	heightCm: string;
+	weightKg: string;
+	bloodGroup: string;
 }
 
 const initialForm: FormState = {
 	fullName: "",
 	dob: "",
 	gender: "",
-	trialCode: "",
-	condition: "",
 	phone: "",
-	notes: "",
+	email: "",
+	heightCm: "",
+	weightKg: "",
+	bloodGroup: "",
 };
 
 function prettyStatus(rawStatus: string): string {
@@ -58,13 +61,22 @@ function prettyStatus(rawStatus: string): string {
 }
 
 function statusPillClasses(status: string): string {
-	switch (status) {
+	const normalizedStatus = status
+		.trim()
+		.toLowerCase()
+		.replace(/[_\s]+/g, "-");
+
+	switch (normalizedStatus) {
 		case "enrolled":
 			return "bg-emerald-100 text-emerald-800";
 		case "eligible":
 			return "bg-cyan-100 text-cyan-800";
+		case "screening":
+			return "bg-yellow-100 text-yellow-800";
 		case "hold":
 			return "bg-amber-100 text-amber-800";
+		case "not-eligible":
+			return "bg-rose-100 text-rose-800";
 		default:
 			return "bg-slate-200 text-slate-700";
 	}
@@ -114,8 +126,11 @@ export default function App() {
 			form.fullName.trim() &&
 			form.dob.trim() &&
 			form.gender.trim() &&
-			form.trialCode.trim() &&
-			form.condition.trim()
+			form.phone.trim() &&
+			form.email.trim() &&
+			form.heightCm.trim() &&
+			form.weightKg.trim() &&
+			form.bloodGroup.trim()
 		);
 	}
 
@@ -137,10 +152,11 @@ export default function App() {
 				fullName: form.fullName.trim(),
 				dob: form.dob.trim(),
 				gender: form.gender.trim(),
-				trialCode: form.trialCode.trim(),
-				condition: form.condition.trim(),
 				phone: form.phone.trim(),
-				notes: form.notes.trim(),
+				email: form.email.trim(),
+				heightCm: form.heightCm.trim(),
+				weightKg: form.weightKg.trim(),
+				bloodGroup: form.bloodGroup.trim(),
 			};
 
 			const response = await fetch("/patients", {
@@ -167,9 +183,7 @@ export default function App() {
 			setForm(initialForm);
 			setIsError(false);
 			setMessage(
-				`Patient ${payload.fullName} added successfully. Auto status: ${prettyStatus(
-					created.enrollmentStatus || "screening",
-				)}.`,
+				`Patient ${payload.fullName} added successfully with ID ${created.id || "-"}.`,
 			);
 			await loadPatients();
 		} catch (error) {
@@ -250,59 +264,88 @@ export default function App() {
 							</label>
 
 							<label className="text-sm font-medium text-slate-700">
-								Trial code
-								<input
-									type="text"
-									name="trialCode"
-									value={form.trialCode}
-									onChange={updateField}
-									placeholder="CT-ONC-204"
-									required
-									className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
-								/>
-							</label>
-
-							<label className="text-sm font-medium text-slate-700 sm:col-span-2">
-								Primary condition
-								<input
-									type="text"
-									name="condition"
-									value={form.condition}
-									onChange={updateField}
-									placeholder="Metastatic breast cancer"
-									required
-									className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
-								/>
-							</label>
-
-							<div className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800 sm:col-span-2">
-								Enrollment status is assigned automatically from
-								intake data and eligibility notes.
-							</div>
-
-							<label className="text-sm font-medium text-slate-700">
-								Contact phone
+								Phone number
 								<input
 									type="tel"
 									name="phone"
 									value={form.phone}
 									onChange={updateField}
 									placeholder="+1 555 123 4567"
+									required
 									className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
 								/>
 							</label>
 
 							<label className="text-sm font-medium text-slate-700">
-								Eligibility notes
-								<textarea
-									name="notes"
-									value={form.notes}
+								Email
+								<input
+									type="email"
+									name="email"
+									value={form.email}
 									onChange={updateField}
-									rows={3}
-									placeholder="Comorbidities, prior therapies, or coordinator comments"
+									placeholder="jane.doe@example.com"
+									required
 									className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
 								/>
 							</label>
+
+							<label className="text-sm font-medium text-slate-700">
+								Height (cm)
+								<input
+									type="number"
+									name="heightCm"
+									value={form.heightCm}
+									onChange={updateField}
+									placeholder="170"
+									min="1"
+									step="0.1"
+									required
+									className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
+								/>
+							</label>
+
+							<label className="text-sm font-medium text-slate-700">
+								Weight (kg)
+								<input
+									type="number"
+									name="weightKg"
+									value={form.weightKg}
+									onChange={updateField}
+									placeholder="65"
+									min="1"
+									step="0.1"
+									required
+									className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
+								/>
+							</label>
+
+							<label className="text-sm font-medium text-slate-700">
+								Blood group
+								<select
+									name="bloodGroup"
+									value={form.bloodGroup}
+									onChange={updateField}
+									required
+									className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
+								>
+									<option value="" disabled>
+										Select blood group
+									</option>
+									<option value="A+">A+</option>
+									<option value="A-">A-</option>
+									<option value="B+">B+</option>
+									<option value="B-">B-</option>
+									<option value="AB+">AB+</option>
+									<option value="AB-">AB-</option>
+									<option value="O+">O+</option>
+									<option value="O-">O-</option>
+								</select>
+							</label>
+
+							<div className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800 sm:col-span-2">
+								Patient ID is assigned automatically from
+								existing patient records.
+							</div>
 						</div>
 
 						<div className="flex items-center justify-between gap-3">
@@ -337,67 +380,88 @@ export default function App() {
 							No patient records yet. Add the first one above.
 						</div>
 					) : (
-						<ul className="space-y-4">
-							{patients.map((patient) => (
-								<li
-									key={patient.id}
-									className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm"
+						<>
+							<ul className="space-y-4">
+								{patients.slice(0, 5).map((patient) => (
+									<li
+										key={patient.id}
+										className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm"
+									>
+										<div className="mb-3 flex items-center justify-between gap-3">
+											<span className="text-base font-semibold text-slate-800">
+												#{patient.id} -{" "}
+												{patient.full_name}
+											</span>
+											<span
+												className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${statusPillClasses(
+													patient.enrollment_status,
+												)}`}
+											>
+												{prettyStatus(
+													patient.enrollment_status,
+												)}
+											</span>
+										</div>
+										<div className="grid grid-cols-1 gap-1 text-sm text-slate-600 sm:grid-cols-2">
+											<div>
+												<span className="font-medium text-slate-700">
+													DOB:
+												</span>{" "}
+												{patient.dob}
+											</div>
+											<div>
+												<span className="font-medium text-slate-700">
+													Gender:
+												</span>{" "}
+												{patient.gender}
+											</div>
+											<div>
+												<span className="font-medium text-slate-700">
+													Phone:
+												</span>{" "}
+												{patient.phone || "-"}
+											</div>
+											<div>
+												<span className="font-medium text-slate-700">
+													Email:
+												</span>{" "}
+												{patient.email || "-"}
+											</div>
+											<div>
+												<span className="font-medium text-slate-700">
+													Height:
+												</span>{" "}
+												{patient.height
+													? `${patient.height} cm`
+													: "-"}
+											</div>
+											<div>
+												<span className="font-medium text-slate-700">
+													Weight:
+												</span>{" "}
+												{patient.weight
+													? `${patient.weight} kg`
+													: "-"}
+											</div>
+											<div>
+												<span className="font-medium text-slate-700">
+													Blood Group:
+												</span>{" "}
+												{patient.blood_group || "-"}
+											</div>
+										</div>
+									</li>
+								))}
+							</ul>
+							{patients.length > 5 && (
+								<Link
+									to="/all-patients"
+									className="mt-4 inline-block rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800"
 								>
-									<div className="mb-3 flex items-center justify-between gap-3">
-										<span className="text-base font-semibold text-slate-800">
-											{patient.full_name}
-										</span>
-										<span
-											className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${statusPillClasses(
-												patient.enrollment_status,
-											)}`}
-										>
-											{prettyStatus(
-												patient.enrollment_status,
-											)}
-										</span>
-									</div>
-									<div className="grid grid-cols-1 gap-1 text-sm text-slate-600 sm:grid-cols-2">
-										<div>
-											<span className="font-medium text-slate-700">
-												Trial:
-											</span>{" "}
-											{patient.trial_code}
-										</div>
-										<div>
-											<span className="font-medium text-slate-700">
-												DOB:
-											</span>{" "}
-											{patient.dob}
-										</div>
-										<div>
-											<span className="font-medium text-slate-700">
-												Gender:
-											</span>{" "}
-											{patient.gender}
-										</div>
-										<div>
-											<span className="font-medium text-slate-700">
-												Condition:
-											</span>{" "}
-											{patient.patient_condition}
-										</div>
-										<div>
-											<span className="font-medium text-slate-700">
-												Phone:
-											</span>{" "}
-											{patient.phone || "-"}
-										</div>
-									</div>
-									<p className="mt-2 text-sm text-slate-600">
-										<span className="font-medium text-slate-700">
-											Notes:
-										</span>{" "}
-										{patient.notes || "-"}
-									</p>
-								</li>
-							))}
-						</ul>
+									Show More ({patients.length - 5} more)
+								</Link>
+							)}
+						</>
 					)}
 				</section>
 			</div>
