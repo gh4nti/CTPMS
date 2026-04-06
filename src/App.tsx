@@ -100,7 +100,11 @@ function prettyGender(rawGender: string): string {
 	return rawGender;
 }
 
-export default function App() {
+interface AppProps {
+	onLogout?: () => void;
+}
+
+export default function App({ onLogout }: AppProps) {
 	const [patients, setPatients] = useState<Patient[]>([]);
 	const [form, setForm] = useState<FormState>(initialForm);
 	const [message, setMessage] = useState("");
@@ -217,14 +221,33 @@ export default function App() {
 	return (
 		<main className="min-h-screen px-4 py-10 sm:px-6 lg:px-8">
 			<div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-				<section className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-xl shadow-slate-200/70 backdrop-blur sm:p-8">
-					<div className="mb-7">
+				<div className="flex items-center justify-between">
+					<div>
 						<p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-700">
 							Clinical Trial Patient Management
 						</p>
 						<h1 className="mt-3 text-3xl font-bold text-slate-800 sm:text-4xl">
-							Enroll Patient
+							Admin Dashboard
 						</h1>
+					</div>
+					{onLogout && (
+						<button
+							onClick={onLogout}
+							className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700"
+						>
+							Logout
+						</button>
+					)}
+				</div>
+
+				<section className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-xl shadow-slate-200/70 backdrop-blur sm:p-8">
+					<div className="mb-7">
+						<p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-700">
+							Enrollment
+						</p>
+						<h2 className="mt-3 text-2xl font-bold text-slate-800">
+							Enroll Patient
+						</h2>
 						<p className="mt-2 max-w-3xl text-slate-600">
 							Capture enrollment-ready patient records and store
 							them with automatic status assignment.

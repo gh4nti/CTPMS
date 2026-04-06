@@ -6,6 +6,7 @@
 	font-family: "Sora", "Avenir Next", "Segoe UI", sans-serif;
 	color: #1f2937;
 	background: #f8fafc;
+	color-scheme: light;
 }
 
 body {
@@ -23,4 +24,109 @@ body {
 			transparent 35%
 		),
 		linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		color: #e2e8f0;
+		background: #0b1220;
+		color-scheme: dark;
+	}
+
+	body {
+		background:
+			radial-gradient(
+				circle at 10% 10%,
+				rgba(45, 212, 191, 0.1),
+				transparent 36%
+			),
+			radial-gradient(
+				circle at 90% 20%,
+				rgba(56, 189, 248, 0.08),
+				transparent 35%
+			),
+			linear-gradient(180deg, #0b1220 0%, #111827 100%);
+	}
+
+	/* Surface + text tone mapping for existing Tailwind utility classes */
+	.bg-white,
+	.bg-white\/90,
+	.bg-slate-50,
+	.bg-gray-50,
+	.bg-gradient-to-br,
+	.from-blue-50,
+	.to-indigo-100 {
+		background-color: #111827 !important;
+		background-image: none !important;
+	}
+
+	.border-slate-200,
+	.border-slate-300,
+	.border-gray-200,
+	.border-gray-300,
+	.border-teal-200 {
+		border-color: #334155 !important;
+	}
+
+	.text-slate-500,
+	.text-slate-600,
+	.text-slate-700,
+	.text-gray-600,
+	.text-gray-700 {
+		color: #94a3b8 !important;
+	}
+
+	.text-slate-800,
+	.text-slate-900,
+	.text-gray-900 {
+		color: #e2e8f0 !important;
+	}
+
+	.bg-slate-100,
+	.bg-slate-200,
+	.hover\:bg-slate-100:hover,
+	.hover\:bg-slate-300:hover {
+		background-color: #1f2937 !important;
+	}
+
+	input,
+	select,
+	textarea {
+		background-color: #0f172a !important;
+		border-color: #334155 !important;
+		color: #e2e8f0 !important;
+	}
+
+	input::placeholder,
+	textarea::placeholder {
+		color: #94a3b8 !important;
+	}
+
+	.bg-red-50 {
+		background-color: rgba(127, 29, 29, 0.25) !important;
+	}
+
+	.border-red-200,
+	.border-red-300 {
+		border-color: #7f1d1d !important;
+	}
+
+	.text-red-700 {
+		color: #fca5a5 !important;
+	}
+
+	.bg-teal-50 {
+		background-color: rgba(15, 118, 110, 0.2) !important;
+	}
+
+	.text-teal-800 {
+		color: #99f6e4 !important;
+	}
+
+	.shadow-xl,
+	.shadow-lg,
+	.shadow-sm,
+	.shadow-slate-200\/70 {
+		box-shadow: 0 10px 24px rgba(2, 6, 23, 0.45) !important;
+	}
 }
