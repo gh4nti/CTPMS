@@ -1,5 +1,6 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import PatientForm, { FormState } from "./PatientForm";
 
 type EnrollmentStatus =
 	| "screening"
@@ -35,28 +36,6 @@ interface ApiErrorBody {
 	details?: string;
 }
 
-interface FormState {
-	fullName: string;
-	dob: string;
-	gender: string;
-	phone: string;
-	email: string;
-	heightCm: string;
-	weightKg: string;
-	bloodGroup: string;
-}
-
-const initialForm: FormState = {
-	fullName: "",
-	dob: "",
-	gender: "",
-	phone: "",
-	email: "",
-	heightCm: "",
-	weightKg: "",
-	bloodGroup: "",
-};
-
 function prettyStatus(rawStatus: string): string {
 	if (!rawStatus) {
 		return "Unknown";
@@ -68,67 +47,14 @@ function prettyStatus(rawStatus: string): string {
 		.join(" ");
 }
 
-function statusPillClasses(status: string): string {
-	const normalizedStatus = status
-		.trim()
-		.toLowerCase()
-		.replace(/[_\s]+/g, "-");
-
-	switch (normalizedStatus) {
-		case "enrolled":
-			return "bg-emerald-100 text-emerald-800";
-		case "eligible":
-			return "bg-cyan-100 text-cyan-800";
-		case "screening":
-			return "bg-yellow-100 text-yellow-800";
-		case "hold":
-			return "bg-amber-100 text-amber-800";
-		case "not-eligible":
-			return "bg-rose-100 text-rose-800";
-		default:
-			return "bg-slate-200 text-slate-700";
-	}
-}
-
-function prettyGender(rawGender: string): string {
-	const normalized = String(rawGender || "")
-		.trim()
-		.toLowerCase();
-
-	if (!normalized || normalized === "unknown") {
-		return "Unknown";
-	}
-
-	if (normalized === "m" || normalized === "male") {
-		return "Male";
-	}
-
-	if (normalized === "f" || normalized === "female") {
-		return "Female";
-	}
-
-	if (
-		normalized === "other" ||
-		normalized === "non-binary" ||
-		normalized === "nonbinary" ||
-		normalized === "nb"
-	) {
-		return "Other";
-	}
-
-	return rawGender.trim();
-}
-
 interface AppProps {
 	onLogout?: () => void;
 }
 
 export default function App({ onLogout }: AppProps) {
 	const [patients, setPatients] = useState<Patient[]>([]);
-	const [form, setForm] = useState<FormState>(initialForm);
 	const [message, setMessage] = useState("");
 	const [isError, setIsError] = useState(false);
-	const [isSaving, setIsSaving] = useState(false);
 
 	const countLabel = useMemo(() => {
 		return `${patients.length} ${patients.length === 1 ? "patient" : "patients"}`;
@@ -153,51 +79,20 @@ export default function App({ onLogout }: AppProps) {
 		void loadPatients();
 	}, []);
 
-	function updateField(
-		event: ChangeEvent<
-			HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-		>,
-	) {
-		const { name, value } = event.target;
-		setForm((current) => ({ ...current, [name]: value }));
-	}
-
-	function hasRequiredFields() {
-		return (
-			form.fullName.trim() &&
-			form.dob.trim() &&
-			form.gender.trim() &&
-			form.phone.trim() &&
-			form.email.trim() &&
-			form.heightCm.trim() &&
-			form.weightKg.trim() &&
-			form.bloodGroup.trim()
-		);
-	}
-
-	async function submitForm(event: FormEvent<HTMLFormElement>) {
-		event.preventDefault();
-
-		if (!hasRequiredFields()) {
-			setIsError(true);
-			setMessage("Please fill in all required patient fields.");
-			return;
-		}
-
-		setIsSaving(true);
+	async function handleSubmitForm(data: FormState) {
 		setIsError(false);
 		setMessage("Saving patient record...");
 
 		try {
 			const payload = {
-				fullName: form.fullName.trim(),
-				dob: form.dob.trim(),
-				gender: form.gender.trim(),
-				phone: form.phone.trim(),
-				email: form.email.trim(),
-				heightCm: form.heightCm.trim(),
-				weightKg: form.weightKg.trim(),
-				bloodGroup: form.bloodGroup.trim(),
+				fullName: data.fullName.trim(),
+				dob: data.dob.trim(),
+				gender: data.gender.trim(),
+				phone: data.phone.trim(),
+				email: data.email.trim(),
+				heightCm: data.heightCm.trim(),
+				weightKg: data.weightKg.trim(),
+				bloodGroup: data.bloodGroup.trim(),
 			};
 
 			const response = await fetch("/patients", {
@@ -221,7 +116,6 @@ export default function App({ onLogout }: AppProps) {
 			const created = (await response
 				.json()
 				.catch(() => ({}))) as Partial<CreatePatientResponse>;
-			setForm(initialForm);
 			setIsError(false);
 			setMessage(
 				`Patient ${payload.fullName} added successfully with ID ${created.id || "-"}.`,
@@ -232,9 +126,59 @@ export default function App({ onLogout }: AppProps) {
 			setMessage(
 				`Could not add patient: ${error instanceof Error ? error.message : "Unknown error"}`,
 			);
-		} finally {
-			setIsSaving(false);
+			throw error;
 		}
+	}
+
+	function statusPillClasses(status: string): string {
+		const normalizedStatus = status
+			.trim()
+			.toLowerCase()
+			.replace(/[_\s]+/g, "-");
+
+		switch (normalizedStatus) {
+			case "enrolled":
+				return "bg-emerald-100 text-emerald-800";
+			case "eligible":
+				return "bg-cyan-100 text-cyan-800";
+			case "screening":
+				return "bg-yellow-100 text-yellow-800";
+			case "hold":
+				return "bg-amber-100 text-amber-800";
+			case "not-eligible":
+				return "bg-rose-100 text-rose-800";
+			default:
+				return "bg-slate-200 text-slate-700";
+		}
+	}
+
+	function prettyGender(rawGender: string): string {
+		const normalized = String(rawGender || "")
+			.trim()
+			.toLowerCase();
+
+		if (!normalized || normalized === "unknown") {
+			return "Unknown";
+		}
+
+		if (normalized === "m" || normalized === "male") {
+			return "Male";
+		}
+
+		if (normalized === "f" || normalized === "female") {
+			return "Female";
+		}
+
+		if (
+			normalized === "other" ||
+			normalized === "non-binary" ||
+			normalized === "nonbinary" ||
+			normalized === "nb"
+		) {
+			return "Other";
+		}
+
+		return rawGender.trim();
 	}
 
 	return (
@@ -273,154 +217,19 @@ export default function App({ onLogout }: AppProps) {
 						</p>
 					</div>
 
-					<form onSubmit={submitForm} className="space-y-5">
-						<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-							<label className="text-sm font-medium text-slate-700">
-								Full name
-								<input
-									type="text"
-									name="fullName"
-									value={form.fullName}
-									onChange={updateField}
-									placeholder="Jane Doe"
-									required
-									className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
-								/>
-							</label>
-
-							<label className="text-sm font-medium text-slate-700">
-								Date of birth
-								<input
-									type="date"
-									name="dob"
-									value={form.dob}
-									onChange={updateField}
-									required
-									className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
-								/>
-							</label>
-
-							<label className="text-sm font-medium text-slate-700">
-								Gender
-								<select
-									name="gender"
-									value={form.gender}
-									onChange={updateField}
-									required
-									className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
-								>
-									<option value="" disabled>
-										Select gender
-									</option>
-									<option value="Female">Female</option>
-									<option value="Male">Male</option>
-									<option value="Other">Non-binary</option>
-									<option value="Unknown">
-										Prefer not to say
-									</option>
-								</select>
-							</label>
-
-							<label className="text-sm font-medium text-slate-700">
-								Phone number
-								<input
-									type="tel"
-									name="phone"
-									value={form.phone}
-									onChange={updateField}
-									placeholder="+1 555 123 4567"
-									required
-									className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
-								/>
-							</label>
-
-							<label className="text-sm font-medium text-slate-700">
-								Email
-								<input
-									type="email"
-									name="email"
-									value={form.email}
-									onChange={updateField}
-									placeholder="jane.doe@example.com"
-									required
-									className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
-								/>
-							</label>
-
-							<label className="text-sm font-medium text-slate-700">
-								Height (cm)
-								<input
-									type="number"
-									name="heightCm"
-									value={form.heightCm}
-									onChange={updateField}
-									placeholder="170"
-									min="1"
-									step="0.1"
-									required
-									className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
-								/>
-							</label>
-
-							<label className="text-sm font-medium text-slate-700">
-								Weight (kg)
-								<input
-									type="number"
-									name="weightKg"
-									value={form.weightKg}
-									onChange={updateField}
-									placeholder="65"
-									min="1"
-									step="0.1"
-									required
-									className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
-								/>
-							</label>
-
-							<label className="text-sm font-medium text-slate-700">
-								Blood group
-								<select
-									name="bloodGroup"
-									value={form.bloodGroup}
-									onChange={updateField}
-									required
-									className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
-								>
-									<option value="" disabled>
-										Select blood group
-									</option>
-									<option value="A+">A+</option>
-									<option value="A-">A-</option>
-									<option value="B+">B+</option>
-									<option value="B-">B-</option>
-									<option value="AB+">AB+</option>
-									<option value="AB-">AB-</option>
-									<option value="O+">O+</option>
-									<option value="O-">O-</option>
-								</select>
-							</label>
-
-							<div className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800 sm:col-span-2">
-								Patient ID is assigned automatically from
-								existing patient records.
-							</div>
+					{message && (
+						<div
+							className={`mb-5 rounded-xl px-4 py-3 text-sm ${
+								isError
+									? "border border-red-300 bg-red-50 text-red-700"
+									: "border border-emerald-300 bg-emerald-50 text-emerald-700"
+							}`}
+						>
+							{message}
 						</div>
+					)}
 
-						<div className="flex items-center justify-between gap-3">
-							<button
-								type="submit"
-								disabled={isSaving}
-								className="rounded-xl bg-teal-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-teal-400"
-							>
-								{isSaving ? "Saving..." : "Add patient record"}
-							</button>
-							<p
-								className={`text-sm ${isError ? "text-red-600" : "text-slate-600"}`}
-							>
-								{message}
-							</p>
-						</div>
-					</form>
+					<PatientForm mode="create" onSubmit={handleSubmitForm} />
 				</section>
 
 				<section className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-xl shadow-slate-200/70 backdrop-blur sm:p-8">

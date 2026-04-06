@@ -198,6 +198,61 @@ app.get("/patients/:id", (req, res) => {
 	);
 });
 
+function checkDuplicatePatient(name, email, excludeId = null, callback) {
+	const query = `
+		SELECT patient_id FROM patients 
+		WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) 
+		OR LOWER(TRIM(email)) = LOWER(TRIM(?))
+	`;
+
+	db.all(query, [name, email], (err, rows) => {
+		if (err) {
+			callback(null, err);
+			return;
+		}
+
+		let duplicateFields = [];
+
+		if (rows && rows.length > 0) {
+			const duplicateIds = rows.map((r) => r.patient_id);
+			const isDuplicate =
+				excludeId == null || !duplicateIds.includes(excludeId);
+
+			if (isDuplicate) {
+				if (rows.some((r) => r.patient_id !== excludeId)) {
+					const sameNameQuery = `SELECT COUNT(*) as count FROM patients 
+						WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))`;
+					db.get(sameNameQuery, [name], (nameErr, nameRow) => {
+						if (!nameErr && nameRow && nameRow.count > 0) {
+							duplicateFields.push("name");
+						}
+
+						const sameEmailQuery = `SELECT COUNT(*) as count FROM patients 
+							WHERE LOWER(TRIM(email)) = LOWER(TRIM(?))`;
+						db.get(
+							sameEmailQuery,
+							[email],
+							(emailErr, emailRow) => {
+								if (
+									!emailErr &&
+									emailRow &&
+									emailRow.count > 0
+								) {
+									duplicateFields.push("email");
+								}
+								callback({ duplicateFields }, null);
+							},
+						);
+					});
+					return;
+				}
+			}
+		}
+
+		callback(null, null);
+	});
+}
+
 app.post("/patients", (req, res) => {
 	const {
 		fullName,
@@ -239,59 +294,218 @@ app.post("/patients", (req, res) => {
 		return;
 	}
 
-	db.get(
-		`SELECT COALESCE(MAX(patient_id), 0) + 1 AS nextId FROM patients`,
-		[],
-		(nextIdError, nextIdRow) => {
-			if (nextIdError) {
+	checkDuplicatePatient(
+		fullName,
+		String(email).trim(),
+		null,
+		(duplicate, err) => {
+			if (err) {
 				res.status(500).json({
-					error: "Could not determine next patient ID",
-					details: nextIdError.message,
+					error: "Could not check for duplicate patients",
+					details: err.message,
 				});
 				return;
 			}
 
-			const nextId = Number(nextIdRow && nextIdRow.nextId);
-			const insertSql = `
-				INSERT INTO patients (
-					patient_id,
-					name,
-					date_of_birth,
-					gender,
-					phone,
-					email,
-					height_cm,
-					weight_kg,
-					blood_group
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-			`;
+			if (duplicate && duplicate.duplicateFields.length > 0) {
+				const fields = duplicate.duplicateFields.join(" and ");
+				res.status(409).json({
+					error: "Duplicate patient detected",
+					details: `A patient with the same ${fields} already exists`,
+				});
+				return;
+			}
 
-			db.run(
-				insertSql,
-				[
-					nextId,
-					String(fullName).trim(),
-					String(dob).trim(),
-					normalizeGender(gender),
-					String(phone).trim(),
-					String(email).trim(),
-					parsedHeight,
-					parsedWeight,
-					String(bloodGroup).trim().toUpperCase(),
-				],
-				function insertPatient(err) {
+			db.get(
+				`SELECT COALESCE(MAX(patient_id), 0) + 1 AS nextId FROM patients`,
+				[],
+				(nextIdError, nextIdRow) => {
+					if (nextIdError) {
+						res.status(500).json({
+							error: "Could not determine next patient ID",
+							details: nextIdError.message,
+						});
+						return;
+					}
+
+					const nextId = Number(nextIdRow && nextIdRow.nextId);
+					const insertSql = `
+					INSERT INTO patients (
+						patient_id,
+						name,
+						date_of_birth,
+						gender,
+						phone,
+						email,
+						height_cm,
+						weight_kg,
+						blood_group
+					) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				`;
+
+					db.run(
+						insertSql,
+						[
+							nextId,
+							String(fullName).trim(),
+							String(dob).trim(),
+							normalizeGender(gender),
+							String(phone).trim(),
+							String(email).trim(),
+							parsedHeight,
+							parsedWeight,
+							String(bloodGroup).trim().toUpperCase(),
+						],
+						function insertPatient(err) {
+							if (err) {
+								res.status(500).json({
+									error: "Could not save patient",
+									details: err.message,
+								});
+								return;
+							}
+
+							res.status(201).json({
+								id: nextId,
+								message: "Patient added",
+							});
+						},
+					);
+				},
+			);
+		},
+	);
+});
+
+app.put("/patients/:id", (req, res) => {
+	const patientId = Number(req.params.id);
+
+	if (!Number.isInteger(patientId) || patientId <= 0) {
+		res.status(400).json({ error: "Invalid patient ID" });
+		return;
+	}
+
+	const {
+		fullName,
+		dob,
+		gender,
+		phone,
+		email,
+		heightCm,
+		weightKg,
+		bloodGroup,
+	} = req.body || {};
+
+	if (
+		!fullName ||
+		!dob ||
+		!gender ||
+		!phone ||
+		!email ||
+		heightCm === undefined ||
+		weightKg === undefined ||
+		!bloodGroup
+	) {
+		res.status(400).json({ error: "Missing required fields" });
+		return;
+	}
+
+	const parsedHeight = Number(heightCm);
+	const parsedWeight = Number(weightKg);
+
+	if (
+		!Number.isFinite(parsedHeight) ||
+		parsedHeight <= 0 ||
+		!Number.isFinite(parsedWeight) ||
+		parsedWeight <= 0
+	) {
+		res.status(400).json({
+			error: "Height and weight must be positive numbers",
+		});
+		return;
+	}
+
+	db.get(
+		`SELECT patient_id FROM patients WHERE patient_id = ?`,
+		[patientId],
+		(checkErr, checkRow) => {
+			if (checkErr) {
+				res.status(500).json({
+					error: "Could not verify patient exists",
+					details: checkErr.message,
+				});
+				return;
+			}
+
+			if (!checkRow) {
+				res.status(404).json({ error: "Patient not found" });
+				return;
+			}
+
+			checkDuplicatePatient(
+				fullName,
+				String(email).trim(),
+				patientId,
+				(duplicate, err) => {
 					if (err) {
 						res.status(500).json({
-							error: "Could not save patient",
+							error: "Could not check for duplicate patients",
 							details: err.message,
 						});
 						return;
 					}
 
-					res.status(201).json({
-						id: nextId,
-						message: "Patient added",
-					});
+					if (duplicate && duplicate.duplicateFields.length > 0) {
+						const fields = duplicate.duplicateFields.join(" and ");
+						res.status(409).json({
+							error: "Duplicate patient detected",
+							details: `Another patient with the same ${fields} already exists`,
+						});
+						return;
+					}
+
+					const updateSql = `
+				UPDATE patients 
+				SET 
+					name = ?,
+					date_of_birth = ?,
+					gender = ?,
+					phone = ?,
+					email = ?,
+					height_cm = ?,
+					weight_kg = ?,
+					blood_group = ?
+				WHERE patient_id = ?
+			`;
+
+					db.run(
+						updateSql,
+						[
+							String(fullName).trim(),
+							String(dob).trim(),
+							normalizeGender(gender),
+							String(phone).trim(),
+							String(email).trim(),
+							parsedHeight,
+							parsedWeight,
+							String(bloodGroup).trim().toUpperCase(),
+							patientId,
+						],
+						function updatePatient(err) {
+							if (err) {
+								res.status(500).json({
+									error: "Could not update patient",
+									details: err.message,
+								});
+								return;
+							}
+
+							res.json({
+								id: patientId,
+								message: "Patient updated",
+							});
+						},
+					);
 				},
 			);
 		},
