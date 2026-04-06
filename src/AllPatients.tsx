@@ -7,12 +7,15 @@ interface Patient {
 	id: number;
 	full_name: string;
 	dob: string;
+	age: number | null;
 	gender: string;
 	phone: string;
 	email: string;
 	height: number | null;
 	weight: number | null;
 	blood_group: string;
+	disease: string;
+	trial: string;
 	enrollment_status: EnrollmentStatus;
 	created_at: string;
 }
@@ -128,6 +131,12 @@ export default function AllPatients() {
 											</div>
 											<div>
 												<span className="font-medium text-slate-700">
+													Age:
+												</span>{" "}
+												{patient.age ?? "-"}
+											</div>
+											<div>
+												<span className="font-medium text-slate-700">
 													Gender:
 												</span>{" "}
 												{patient.gender}
@@ -165,6 +174,18 @@ export default function AllPatients() {
 													Blood Group:
 												</span>{" "}
 												{patient.blood_group || "-"}
+											</div>
+											<div>
+												<span className="font-medium text-slate-700">
+													Disease:
+												</span>{" "}
+												{patient.disease || "-"}
+											</div>
+											<div>
+												<span className="font-medium text-slate-700">
+													Trial:
+												</span>{" "}
+												{patient.trial || "-"}
 											</div>
 										</div>
 									</li>

@@ -15,17 +15,20 @@ app.get("/patients", (req, res) => {
 			p.PatientID as id,
 			p.Name as full_name,
 			p.DateOfBirth as dob,
+			CAST((julianday('now') - julianday(p.DateOfBirth)) / 365.2425 AS INTEGER) as age,
 			p.Gender as gender,
 			CAST(p.Phone AS TEXT) as phone,
 			COALESCE(p.Email, '') as email,
 			p.Height as height,
 			p.Weight as weight,
 			COALESCE(p.BloodGroup, '') as blood_group,
+			COALESCE(dis.DiseaseName, '') as disease,
+			COALESCE(ct.TrialTitle, '') as trial,
 			COALESCE(ptm.EligibilityStatus, 'screening') as enrollment_status,
 			datetime('now') as created_at
 		 FROM patients p
 		 LEFT JOIN (
-			SELECT m.PatientID, m.EligibilityStatus
+			SELECT m.PatientID, m.TrialID, m.EligibilityStatus
 			FROM Patient_Trial_Match m
 			INNER JOIN (
 				SELECT PatientID, MAX(MatchID) AS LatestMatchID
@@ -33,6 +36,17 @@ app.get("/patients", (req, res) => {
 				GROUP BY PatientID
 			) latest ON latest.LatestMatchID = m.MatchID
 		 ) ptm ON p.PatientID = ptm.PatientID
+		 LEFT JOIN clinical_trials ct ON ptm.TrialID = ct.TrialID
+		 LEFT JOIN (
+			SELECT d.PatientID, d.DiseaseID
+			FROM diagnoses d
+			INNER JOIN (
+				SELECT PatientID, MAX(DiagnosisID) AS LatestDiagnosisID
+				FROM diagnoses
+				GROUP BY PatientID
+			) latest_dx ON latest_dx.LatestDiagnosisID = d.DiagnosisID
+		 ) dx ON p.PatientID = dx.PatientID
+		 LEFT JOIN diseases dis ON dx.DiseaseID = dis.DiseaseID
 		 ORDER BY p.PatientID DESC`,
 		[],
 		(err, rows) => {
