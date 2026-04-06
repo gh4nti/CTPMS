@@ -62,7 +62,7 @@ export default function App({ onLogout }: AppProps) {
 
 	async function loadPatients() {
 		try {
-			const res = await fetch("/patients");
+			const res = await fetch("/api/patients");
 			if (!res.ok) {
 				throw new Error("Request failed");
 			}
@@ -95,7 +95,7 @@ export default function App({ onLogout }: AppProps) {
 				bloodGroup: data.bloodGroup.trim(),
 			};
 
-			const response = await fetch("/patients", {
+			const response = await fetch("/api/patients", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(payload),

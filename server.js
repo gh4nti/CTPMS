@@ -7,6 +7,14 @@ const fs = require("fs");
 const app = express();
 app.use(bodyParser.json());
 
+app.use((req, res, next) => {
+	if (req.url.startsWith("/api/")) {
+		req.url = req.url.slice(4);
+	}
+
+	next();
+});
+
 const dbPath = path.join(__dirname, "clinical_trials.db");
 const db = new sqlite3.Database(dbPath);
 
@@ -875,7 +883,7 @@ if (fs.existsSync(distPath)) {
 	app.use(express.static(distPath));
 
 	app.use((req, res, next) => {
-		if (req.path.startsWith("/patients")) {
+		if (req.path.startsWith("/patients") || req.path.startsWith("/api/")) {
 			next();
 			return;
 		}
@@ -884,5 +892,9 @@ if (fs.existsSync(distPath)) {
 	});
 }
 
-const PORT = Number(process.env.PORT) || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+if (require.main === module) {
+	const PORT = Number(process.env.PORT) || 3000;
+	app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+}
+
+module.exports = app;

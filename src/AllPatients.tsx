@@ -270,7 +270,7 @@ export default function AllPatients({ onLogout }: { onLogout?: () => void }) {
 	useEffect(() => {
 		async function loadPatients() {
 			try {
-				const res = await fetch("/patients");
+				const res = await fetch("/api/patients");
 				if (!res.ok) {
 					throw new Error("Request failed");
 				}
