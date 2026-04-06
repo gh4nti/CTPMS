@@ -7,47 +7,88 @@ const fs = require("fs");
 const app = express();
 app.use(bodyParser.json());
 
-const db = new sqlite3.Database("chinook.db");
+const dbPath = path.join(__dirname, "clinical_trials.db");
+const db = new sqlite3.Database(dbPath);
+
+function normalizeGender(inputGender) {
+	const normalized = String(inputGender || "")
+		.trim()
+		.toLowerCase();
+
+	switch (normalized) {
+		case "male":
+			return "Male";
+		case "female":
+			return "Female";
+		case "other":
+		case "non-binary":
+		case "nonbinary":
+			return "Other";
+		default:
+			return "Unknown";
+	}
+}
 
 app.get("/patients", (req, res) => {
 	db.all(
-		`SELECT
-			p.PatientID as id,
-			p.Name as full_name,
-			p.DateOfBirth as dob,
-			CAST((julianday('now') - julianday(p.DateOfBirth)) / 365.2425 AS INTEGER) as age,
-			p.Gender as gender,
-			CAST(p.Phone AS TEXT) as phone,
-			COALESCE(p.Email, '') as email,
-			p.Height as height,
-			p.Weight as weight,
-			COALESCE(p.BloodGroup, '') as blood_group,
-			COALESCE(dis.DiseaseName, '') as disease,
-			COALESCE(ct.TrialTitle, '') as trial,
-			COALESCE(ptm.EligibilityStatus, 'screening') as enrollment_status,
-			datetime('now') as created_at
-		 FROM patients p
-		 LEFT JOIN (
-			SELECT m.PatientID, m.TrialID, m.EligibilityStatus
-			FROM Patient_Trial_Match m
+		`WITH latest_match AS (
+			SELECT m.patient_id, m.trial_id, m.eligibility_status
+			FROM patient_trial_matches m
 			INNER JOIN (
-				SELECT PatientID, MAX(MatchID) AS LatestMatchID
-				FROM Patient_Trial_Match
-				GROUP BY PatientID
-			) latest ON latest.LatestMatchID = m.MatchID
-		 ) ptm ON p.PatientID = ptm.PatientID
-		 LEFT JOIN clinical_trials ct ON ptm.TrialID = ct.TrialID
-		 LEFT JOIN (
-			SELECT d.PatientID, d.DiseaseID
+				SELECT patient_id, MAX(match_id) AS latest_match_id
+				FROM patient_trial_matches
+				GROUP BY patient_id
+			) lm ON lm.latest_match_id = m.match_id
+		),
+		latest_enrollment AS (
+			SELECT e.patient_id, e.trial_id, e.enrollment_status
+			FROM enrollment e
+			INNER JOIN (
+				SELECT patient_id, MAX(enrollment_id) AS latest_enrollment_id
+				FROM enrollment
+				GROUP BY patient_id
+			) le ON le.latest_enrollment_id = e.enrollment_id
+		),
+		latest_diagnosis AS (
+			SELECT d.patient_id, d.disease_id
 			FROM diagnoses d
 			INNER JOIN (
-				SELECT PatientID, MAX(DiagnosisID) AS LatestDiagnosisID
+				SELECT patient_id, MAX(diagnosis_id) AS latest_diagnosis_id
 				FROM diagnoses
-				GROUP BY PatientID
-			) latest_dx ON latest_dx.LatestDiagnosisID = d.DiagnosisID
-		 ) dx ON p.PatientID = dx.PatientID
-		 LEFT JOIN diseases dis ON dx.DiseaseID = dis.DiseaseID
-		 ORDER BY p.PatientID DESC`,
+				GROUP BY patient_id
+			) ld ON ld.latest_diagnosis_id = d.diagnosis_id
+		)
+		SELECT
+			p.patient_id AS id,
+			p.name AS full_name,
+			p.date_of_birth AS dob,
+			CAST((julianday('now') - julianday(p.date_of_birth)) / 365.2425 AS INTEGER) AS age,
+			p.gender AS gender,
+			COALESCE(CAST(p.phone AS TEXT), '') AS phone,
+			COALESCE(p.email, '') AS email,
+			p.height_cm AS height,
+			p.weight_kg AS weight,
+			COALESCE(p.blood_group, '') AS blood_group,
+			COALESCE(dis.disease_name, trial_dis.disease_name, 'Not recorded') AS disease,
+			COALESCE(ct.trial_title, '') AS trial,
+			CASE
+				WHEN LOWER(COALESCE(en.enrollment_status, '')) IN ('enrolled', 'completed') THEN 'enrolled'
+				WHEN LOWER(COALESCE(en.enrollment_status, '')) = 'screening' THEN 'screening'
+				WHEN LOWER(COALESCE(en.enrollment_status, '')) IN ('withdrawn', 'rejected') THEN 'not-eligible'
+				WHEN LOWER(COALESCE(lm.eligibility_status, '')) = 'eligible' THEN 'eligible'
+				WHEN LOWER(COALESCE(lm.eligibility_status, '')) = 'ineligible' THEN 'not-eligible'
+				WHEN LOWER(COALESCE(lm.eligibility_status, '')) = 'pending' THEN 'screening'
+				ELSE 'screening'
+			END AS enrollment_status,
+			p.created_at AS created_at
+		FROM patients p
+		LEFT JOIN latest_match lm ON p.patient_id = lm.patient_id
+		LEFT JOIN latest_enrollment en ON p.patient_id = en.patient_id
+		LEFT JOIN clinical_trials ct ON ct.trial_id = COALESCE(en.trial_id, lm.trial_id)
+		LEFT JOIN latest_diagnosis dx ON p.patient_id = dx.patient_id
+		LEFT JOIN diseases dis ON dx.disease_id = dis.disease_id
+		LEFT JOIN diseases trial_dis ON ct.target_disease_id = trial_dis.disease_id
+		ORDER BY p.patient_id DESC`,
 		[],
 		(err, rows) => {
 			if (err) {
@@ -105,7 +146,7 @@ app.post("/patients", (req, res) => {
 	}
 
 	db.get(
-		`SELECT COALESCE(MAX(PatientID), 0) + 1 AS nextId FROM patients`,
+		`SELECT COALESCE(MAX(patient_id), 0) + 1 AS nextId FROM patients`,
 		[],
 		(nextIdError, nextIdRow) => {
 			if (nextIdError) {
@@ -119,15 +160,15 @@ app.post("/patients", (req, res) => {
 			const nextId = Number(nextIdRow && nextIdRow.nextId);
 			const insertSql = `
 				INSERT INTO patients (
-					PatientID,
-					Name,
-					DateOfBirth,
-					Gender,
-					Phone,
-					Email,
-					Height,
-					Weight,
-					BloodGroup
+					patient_id,
+					name,
+					date_of_birth,
+					gender,
+					phone,
+					email,
+					height_cm,
+					weight_kg,
+					blood_group
 				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`;
 
@@ -137,7 +178,7 @@ app.post("/patients", (req, res) => {
 					nextId,
 					String(fullName).trim(),
 					String(dob).trim(),
-					String(gender).trim(),
+					normalizeGender(gender),
 					String(phone).trim(),
 					String(email).trim(),
 					parsedHeight,

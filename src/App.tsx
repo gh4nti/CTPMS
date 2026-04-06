@@ -1,7 +1,12 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-type EnrollmentStatus = "screening" | "eligible" | "enrolled" | "hold";
+type EnrollmentStatus =
+	| "screening"
+	| "eligible"
+	| "enrolled"
+	| "hold"
+	| "not-eligible";
 
 interface Patient {
 	id: number;
@@ -83,6 +88,16 @@ function statusPillClasses(status: string): string {
 		default:
 			return "bg-slate-200 text-slate-700";
 	}
+}
+
+function prettyGender(rawGender: string): string {
+	const normalized = rawGender.trim().toLowerCase();
+
+	if (!normalized || normalized === "unknown") {
+		return "Not provided";
+	}
+
+	return rawGender;
 }
 
 export default function App() {
@@ -255,12 +270,10 @@ export default function App() {
 									<option value="" disabled>
 										Select gender
 									</option>
-									<option value="female">Female</option>
-									<option value="male">Male</option>
-									<option value="non-binary">
-										Non-binary
-									</option>
-									<option value="prefer-not-to-say">
+									<option value="Female">Female</option>
+									<option value="Male">Male</option>
+									<option value="Other">Non-binary</option>
+									<option value="Unknown">
 										Prefer not to say
 									</option>
 								</select>
@@ -422,7 +435,7 @@ export default function App() {
 												<span className="font-medium text-slate-700">
 													Gender:
 												</span>{" "}
-												{patient.gender}
+												{prettyGender(patient.gender)}
 											</div>
 											<div>
 												<span className="font-medium text-slate-700">

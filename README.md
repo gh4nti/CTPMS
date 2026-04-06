@@ -57,11 +57,12 @@ Request body:
 {
 	"fullName": "Jane Doe",
 	"dob": "1990-01-01",
-	"gender": "female",
-	"trialCode": "CT-ONC-204",
-	"condition": "Metastatic breast cancer",
+	"gender": "Female",
 	"phone": "+1 555 123 4567",
-	"notes": "Eligible, consented"
+	"email": "jane.doe@example.com",
+	"heightCm": 170,
+	"weightKg": 65,
+	"bloodGroup": "A+"
 }
 ```
 
@@ -70,35 +71,29 @@ Required fields:
 - `fullName`
 - `dob`
 - `gender`
-- `trialCode`
-- `condition`
-
-Optional fields:
-
 - `phone`
-- `notes`
+- `email`
+- `heightCm`
+- `weightKg`
+- `bloodGroup`
 
-The server computes `enrollment_status` automatically:
-
-- `hold`: notes contain hold signals like `on hold`, `pending`, `missing`, `incomplete`
-- `enrolled`: notes contain terms like `enrolled`, `consented`, `randomized`
-- `eligible`: notes contain eligibility signals or a phone number is present
-- `screening`: default fallback
+Gender values accepted by the DB are `Male`, `Female`, `Other`, and `Unknown`.
 
 ## Data Storage
 
-- SQLite DB file: `chinook.db`
-- Table: `trial_patients`
+- SQLite DB file: `clinical_trials.db`
+- Main write table: `patients`
+- Read model joins `patients`, `patient_trial_matches`, `enrollment`, `diagnoses`, `diseases`, and `clinical_trials`
 
-Table columns:
+Inserted patient columns:
 
-- `id`
-- `full_name`
-- `dob`
+- `patient_id`
+- `name`
+- `date_of_birth`
 - `gender`
-- `trial_code`
-- `primary_condition`
-- `enrollment_status`
 - `phone`
-- `notes`
+- `email`
+- `height_cm`
+- `weight_kg`
+- `blood_group`
 - `created_at`

@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-type EnrollmentStatus = "screening" | "eligible" | "enrolled" | "hold";
+type EnrollmentStatus =
+	| "screening"
+	| "eligible"
+	| "enrolled"
+	| "hold"
+	| "not-eligible";
 
 interface Patient {
 	id: number;
@@ -51,6 +56,16 @@ function statusPillClasses(status: string): string {
 		default:
 			return "bg-slate-200 text-slate-700";
 	}
+}
+
+function prettyGender(rawGender: string): string {
+	const normalized = rawGender.trim().toLowerCase();
+
+	if (!normalized || normalized === "unknown") {
+		return "Not provided";
+	}
+
+	return rawGender;
 }
 
 export default function AllPatients() {
@@ -139,7 +154,7 @@ export default function AllPatients() {
 												<span className="font-medium text-slate-700">
 													Gender:
 												</span>{" "}
-												{patient.gender}
+												{prettyGender(patient.gender)}
 											</div>
 											<div>
 												<span className="font-medium text-slate-700">
