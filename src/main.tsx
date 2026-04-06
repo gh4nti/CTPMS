@@ -112,6 +112,19 @@ function AppWrapper() {
 					}
 				/>
 				<Route
+					path="/patients/:id/edit"
+					element={
+						<ProtectedRoute
+							isAuthenticated={isAuthenticated}
+							onLogin={handleLogin}
+							isLoading={isLoading}
+							error={error}
+						>
+							<PatientProfile onLogout={handleLogout} />
+						</ProtectedRoute>
+					}
+				/>
+				<Route
 					path="/all-patients"
 					element={
 						<ProtectedRoute

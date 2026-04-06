@@ -9,6 +9,7 @@ export interface FormState {
 	heightCm: string;
 	weightKg: string;
 	bloodGroup: string;
+	enrollmentStatus: string;
 }
 
 export interface PatientFormProps {
@@ -33,6 +34,7 @@ const initialForm: FormState = {
 	heightCm: "",
 	weightKg: "",
 	bloodGroup: "",
+	enrollmentStatus: "",
 };
 
 export default function PatientForm({
@@ -182,6 +184,13 @@ export default function PatientForm({
 			newErrors.push({
 				field: "bloodGroup",
 				message: "Blood group is required",
+			});
+		}
+
+		if (mode === "edit" && !form.enrollmentStatus.trim()) {
+			newErrors.push({
+				field: "enrollmentStatus",
+				message: "Status is required",
 			});
 		}
 
@@ -418,6 +427,30 @@ export default function PatientForm({
 						</p>
 					)}
 				</label>
+
+				{mode === "edit" && (
+					<label className="text-sm font-medium text-slate-700 sm:col-span-2">
+						Status *
+						<select
+							name="enrollmentStatus"
+							value={form.enrollmentStatus}
+							onChange={updateField}
+							disabled={isSaving || isLoading}
+							className={fieldClasses("enrollmentStatus")}
+						>
+							<option value="">Select status</option>
+							<option value="screening">Screening</option>
+							<option value="eligible">Eligible</option>
+							<option value="enrolled">Enrolled</option>
+							<option value="not-eligible">Not eligible</option>
+						</select>
+						{getFieldError("enrollmentStatus") && (
+							<p className="mt-1 text-xs text-red-600">
+								{getFieldError("enrollmentStatus")}
+							</p>
+						)}
+					</label>
+				)}
 
 				{/* Info Banner */}
 				<div className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800 sm:col-span-2">

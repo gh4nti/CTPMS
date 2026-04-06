@@ -36,6 +36,114 @@ function normalizeGender(inputGender) {
 	}
 }
 
+function normalizePatientStatus(inputStatus) {
+	const normalized = String(inputStatus || "")
+		.trim()
+		.toLowerCase()
+		.replace(/[_\s]+/g, "-");
+
+	if (
+		normalized === "screening" ||
+		normalized === "eligible" ||
+		normalized === "enrolled" ||
+		normalized === "not-eligible"
+	) {
+		return normalized;
+	}
+
+	return null;
+}
+
+function updatePatientStatus(patientId, inputStatus, callback) {
+	const normalizedStatus = normalizePatientStatus(inputStatus);
+
+	if (!normalizedStatus) {
+		callback(new Error("Invalid enrollment status"));
+		return;
+	}
+
+	db.get(
+		`SELECT
+			(SELECT enrollment_id FROM enrollment WHERE patient_id = ? ORDER BY enrollment_id DESC LIMIT 1) AS latest_enrollment_id,
+			(SELECT match_id FROM patient_trial_matches WHERE patient_id = ? ORDER BY match_id DESC LIMIT 1) AS latest_match_id
+		`,
+		[patientId, patientId],
+		(err, row) => {
+			if (err) {
+				callback(err);
+				return;
+			}
+
+			const latestEnrollmentId = row && row.latest_enrollment_id;
+			const latestMatchId = row && row.latest_match_id;
+
+			let updateSql = "";
+			let updateParams = [];
+
+			if (
+				normalizedStatus === "screening" ||
+				normalizedStatus === "enrolled"
+			) {
+				if (latestEnrollmentId) {
+					updateSql = `UPDATE enrollment SET enrollment_status = ? WHERE enrollment_id = ?`;
+					updateParams = [
+						normalizedStatus === "screening"
+							? "Screening"
+							: "Enrolled",
+						latestEnrollmentId,
+					];
+				} else if (normalizedStatus === "screening" && latestMatchId) {
+					updateSql = `UPDATE patient_trial_matches SET eligibility_status = ? WHERE match_id = ?`;
+					updateParams = ["Pending", latestMatchId];
+				} else {
+					callback(
+						new Error(
+							"This patient has no status record to update.",
+						),
+					);
+					return;
+				}
+			} else if (normalizedStatus === "eligible") {
+				if (!latestMatchId) {
+					callback(
+						new Error(
+							"This patient has no trial match record to update.",
+						),
+					);
+					return;
+				}
+
+				updateSql = `UPDATE patient_trial_matches SET eligibility_status = ? WHERE match_id = ?`;
+				updateParams = ["Eligible", latestMatchId];
+			} else if (normalizedStatus === "not-eligible") {
+				if (latestMatchId) {
+					updateSql = `UPDATE patient_trial_matches SET eligibility_status = ? WHERE match_id = ?`;
+					updateParams = ["Ineligible", latestMatchId];
+				} else if (latestEnrollmentId) {
+					updateSql = `UPDATE enrollment SET enrollment_status = ? WHERE enrollment_id = ?`;
+					updateParams = ["Rejected", latestEnrollmentId];
+				} else {
+					callback(
+						new Error(
+							"This patient has no status record to update.",
+						),
+					);
+					return;
+				}
+			}
+
+			db.run(updateSql, updateParams, (updateErr) => {
+				if (updateErr) {
+					callback(updateErr);
+					return;
+				}
+
+				callback(null);
+			});
+		},
+	);
+}
+
 app.get("/patients", (req, res) => {
 	db.all(
 		`WITH latest_match AS (
@@ -198,6 +306,201 @@ app.get("/patients/:id", (req, res) => {
 	);
 });
 
+app.get("/patients/:id/records", (req, res) => {
+	const patientId = Number(req.params.id);
+
+	if (!Number.isInteger(patientId) || patientId <= 0) {
+		res.status(400).json({ error: "Invalid patient ID" });
+		return;
+	}
+
+	db.get(
+		`SELECT patient_id FROM patients WHERE patient_id = ?`,
+		[patientId],
+		(checkErr, checkRow) => {
+			if (checkErr) {
+				res.status(500).json({
+					error: "Could not verify patient exists",
+					details: checkErr.message,
+				});
+				return;
+			}
+
+			if (!checkRow) {
+				res.status(404).json({ error: "Patient not found" });
+				return;
+			}
+
+			const medicationsQuery = `
+		SELECT
+			pm.patient_med_id AS id,
+			m.drug_name AS name,
+			m.drug_class AS class,
+			COALESCE(pm.dosage, '') AS dosage,
+			pm.start_date AS start_date,
+			pm.end_date AS end_date,
+			pm.current_status AS current_status
+		FROM patient_medications pm
+		INNER JOIN medications m ON m.medication_id = pm.medication_id
+		WHERE pm.patient_id = ?
+		ORDER BY pm.start_date DESC, pm.patient_med_id DESC
+	`;
+
+			const visitsQuery = `
+		SELECT
+			lr.result_id AS id,
+			lt.test_name AS title,
+			lr.test_date AS date,
+			lr.test_value AS value,
+			lt.unit AS unit,
+			lt.normal_range_lo AS normal_range_lo,
+			lt.normal_range_hi AS normal_range_hi
+		FROM lab_results lr
+		INNER JOIN lab_tests lt ON lt.test_id = lr.test_id
+		WHERE lr.patient_id = ?
+		ORDER BY lr.test_date DESC, lr.result_id DESC
+		LIMIT 8
+	`;
+
+			db.all(medicationsQuery, [patientId], (medErr, medications) => {
+				if (medErr) {
+					res.status(500).json({
+						error: "Could not fetch patient medications",
+						details: medErr.message,
+					});
+					return;
+				}
+
+				db.all(visitsQuery, [patientId], (visitErr, visits) => {
+					if (visitErr) {
+						res.status(500).json({
+							error: "Could not fetch patient visit history",
+							details: visitErr.message,
+						});
+						return;
+					}
+
+					res.json({
+						medications: medications || [],
+						visits:
+							(visits || []).map((visit) => {
+								let interpretation = "Within range";
+								if (
+									typeof visit.normal_range_lo === "number" &&
+									visit.value < visit.normal_range_lo
+								) {
+									interpretation = "Below range";
+								}
+								if (
+									typeof visit.normal_range_hi === "number" &&
+									visit.value > visit.normal_range_hi
+								) {
+									interpretation = "Above range";
+								}
+
+								return {
+									id: visit.id,
+									title: visit.title,
+									date: visit.date,
+									value: visit.value,
+									unit: visit.unit,
+									interpretation,
+								};
+							}) || [],
+						notes: [],
+						allergies: [],
+					});
+				});
+			});
+		},
+	);
+});
+
+app.delete("/patients/:id", (req, res) => {
+	const patientId = Number(req.params.id);
+
+	if (!Number.isInteger(patientId) || patientId <= 0) {
+		res.status(400).json({ error: "Invalid patient ID" });
+		return;
+	}
+
+	db.get(
+		`SELECT patient_id FROM patients WHERE patient_id = ?`,
+		[patientId],
+		(checkErr, checkRow) => {
+			if (checkErr) {
+				res.status(500).json({
+					error: "Could not verify patient exists",
+					details: checkErr.message,
+				});
+				return;
+			}
+
+			if (!checkRow) {
+				res.status(404).json({ error: "Patient not found" });
+				return;
+			}
+
+			const dependentTables = [
+				"patient_trial_matches",
+				"enrollment",
+				"diagnoses",
+				"patient_medications",
+				"lab_results",
+			];
+
+			const deleteRows = dependentTables.map(
+				(table) =>
+					new Promise((resolve, reject) => {
+						db.run(
+							`DELETE FROM ${table} WHERE patient_id = ?`,
+							[patientId],
+							(err) => {
+								if (err) {
+									reject(err);
+									return;
+								}
+
+								resolve(null);
+							},
+						);
+					}),
+			);
+
+			Promise.all(deleteRows)
+				.then(
+					() =>
+						new Promise((resolve, reject) => {
+							db.run(
+								`DELETE FROM patients WHERE patient_id = ?`,
+								[patientId],
+								(err) => {
+									if (err) {
+										reject(err);
+										return;
+									}
+
+									resolve(null);
+								},
+							);
+						}),
+				)
+				.then(() => {
+					res.json({
+						id: patientId,
+						message: "Patient deleted",
+					});
+				})
+				.catch((err) => {
+					res.status(500).json({
+						error: "Could not delete patient",
+						details: err.message,
+					});
+				});
+		},
+	);
+});
+
 function checkDuplicatePatient(name, email, excludeId = null, callback) {
 	const query = `
 		SELECT patient_id FROM patients 
@@ -263,6 +566,7 @@ app.post("/patients", (req, res) => {
 		heightCm,
 		weightKg,
 		bloodGroup,
+		enrollmentStatus,
 	} = req.body || {};
 
 	if (
@@ -276,6 +580,12 @@ app.post("/patients", (req, res) => {
 		!bloodGroup
 	) {
 		res.status(400).json({ error: "Missing required fields" });
+		return;
+	}
+
+	const normalizedStatus = normalizePatientStatus(enrollmentStatus);
+	if (enrollmentStatus && !normalizedStatus) {
+		res.status(400).json({ error: "Invalid enrollment status" });
 		return;
 	}
 
@@ -478,6 +788,8 @@ app.put("/patients/:id", (req, res) => {
 				WHERE patient_id = ?
 			`;
 
+					db.run("BEGIN TRANSACTION");
+
 					db.run(
 						updateSql,
 						[
@@ -493,6 +805,7 @@ app.put("/patients/:id", (req, res) => {
 						],
 						function updatePatient(err) {
 							if (err) {
+								db.run("ROLLBACK");
 								res.status(500).json({
 									error: "Could not update patient",
 									details: err.message,
@@ -500,9 +813,54 @@ app.put("/patients/:id", (req, res) => {
 								return;
 							}
 
-							res.json({
-								id: patientId,
-								message: "Patient updated",
+							if (normalizedStatus) {
+								updatePatientStatus(
+									patientId,
+									normalizedStatus,
+									(statusErr) => {
+										if (statusErr) {
+											db.run("ROLLBACK");
+											res.status(400).json({
+												error: "Could not update status",
+												details: statusErr.message,
+											});
+											return;
+										}
+
+										db.run("COMMIT", (commitErr) => {
+											if (commitErr) {
+												db.run("ROLLBACK");
+												res.status(500).json({
+													error: "Could not save patient updates",
+													details: commitErr.message,
+												});
+												return;
+											}
+
+											res.json({
+												id: patientId,
+												message: "Patient updated",
+											});
+										});
+									},
+								);
+								return;
+							}
+
+							db.run("COMMIT", (commitErr) => {
+								if (commitErr) {
+									db.run("ROLLBACK");
+									res.status(500).json({
+										error: "Could not save patient updates",
+										details: commitErr.message,
+									});
+									return;
+								}
+
+								res.json({
+									id: patientId,
+									message: "Patient updated",
+								});
 							});
 						},
 					);
