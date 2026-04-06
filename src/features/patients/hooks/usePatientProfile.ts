@@ -144,25 +144,7 @@ export default function usePatientProfile(
 			return;
 		}
 
-		if (patient.email) {
-			const subject = encodeURIComponent(
-				`Appointment request for ${patient.full_name}`,
-			);
-			const body = encodeURIComponent(
-				`Hello ${patient.full_name},\n\nWe would like to schedule your next appointment.`,
-			);
-			window.location.href = `mailto:${patient.email}?subject=${subject}&body=${body}`;
-			return;
-		}
-
-		if (patient.phone) {
-			window.location.href = `tel:${patient.phone.replace(/[^\d+]/g, "")}`;
-			return;
-		}
-
-		setUpdateError(
-			"No contact details available to schedule an appointment.",
-		);
+		navigate(`/appointments?patientId=${patient.id}`);
 	}
 
 	async function handleDeletePatient() {

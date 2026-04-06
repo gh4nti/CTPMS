@@ -79,11 +79,43 @@ Required fields:
 
 Gender values accepted by the DB are `Male`, `Female`, `Other`, and `Unknown`.
 
+### `GET /appointments`
+
+Returns appointments within a requested date range.
+
+Query parameters:
+
+- `from` - ISO timestamp for the inclusive lower bound
+- `to` - ISO timestamp for the exclusive upper bound
+
+Optional:
+
+- `patientId` - narrows the result set to a single patient
+
+### `POST /appointments`
+
+Books a new appointment.
+
+### `PUT /appointments/:id`
+
+Reschedules an existing appointment.
+
+### `PATCH /appointments/:id/cancel`
+
+Cancels an appointment without deleting it.
+
 ## Data Storage
 
 - SQLite DB file: `clinical_trials.db`
 - Main write table: `patients`
 - Read model joins `patients`, `patient_trial_matches`, `enrollment`, `diagnoses`, `diseases`, and `clinical_trials`
+- Appointments are stored in the `appointments` table and are checked for overlapping time slots before save/update
+
+## Appointments UI
+
+- Open the appointments module from the dashboard or a patient profile
+- Use the daily and weekly calendar views to inspect the schedule
+- Book, reschedule, and cancel appointments from the same screen
 
 Inserted patient columns:
 

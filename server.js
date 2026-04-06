@@ -18,6 +18,29 @@ app.use((req, res, next) => {
 const dbPath = path.join(__dirname, "clinical_trials.db");
 const db = new sqlite3.Database(dbPath);
 
+db.serialize(() => {
+	db.run(`
+		CREATE TABLE IF NOT EXISTS appointments (
+			appointment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+			patient_id INTEGER NOT NULL,
+			title TEXT NOT NULL,
+			start_time TEXT NOT NULL,
+			end_time TEXT NOT NULL,
+			location TEXT NOT NULL DEFAULT '',
+			notes TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'scheduled',
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`);
+	db.run(
+		`CREATE INDEX IF NOT EXISTS idx_appointments_patient_id ON appointments(patient_id)`,
+	);
+	db.run(
+		`CREATE INDEX IF NOT EXISTS idx_appointments_start_time ON appointments(start_time)`,
+	);
+});
+
 function normalizeGender(inputGender) {
 	const normalized = String(inputGender || "")
 		.trim()
@@ -60,6 +83,70 @@ function normalizePatientStatus(inputStatus) {
 	}
 
 	return null;
+}
+
+function normalizeAppointmentStatus(inputStatus) {
+	const normalized = String(inputStatus || "")
+		.trim()
+		.toLowerCase();
+
+	if (normalized === "scheduled" || normalized === "cancelled") {
+		return normalized;
+	}
+
+	return null;
+}
+
+function parseIsoDateTime(inputValue) {
+	const parsedDate = new Date(String(inputValue || ""));
+
+	if (Number.isNaN(parsedDate.getTime())) {
+		return null;
+	}
+
+	return parsedDate;
+}
+
+function findAppointmentConflict(
+	startTime,
+	endTime,
+	excludeAppointmentId,
+	callback,
+) {
+	const params = [startTime, endTime];
+	let conflictSql = `
+		SELECT
+			a.appointment_id,
+			a.patient_id,
+			a.title,
+			a.start_time,
+			a.end_time,
+			p.name AS patient_name
+		FROM appointments a
+		INNER JOIN patients p ON p.patient_id = a.patient_id
+		WHERE LOWER(COALESCE(a.status, '')) != 'cancelled'
+			AND a.start_time < ?
+			AND a.end_time > ?
+	`;
+
+	if (
+		Number.isInteger(Number(excludeAppointmentId)) &&
+		Number(excludeAppointmentId) > 0
+	) {
+		conflictSql += ` AND a.appointment_id != ?`;
+		params.push(Number(excludeAppointmentId));
+	}
+
+	conflictSql += ` ORDER BY a.start_time ASC, a.appointment_id ASC LIMIT 1`;
+
+	db.get(conflictSql, params, (err, row) => {
+		if (err) {
+			callback(err, null);
+			return;
+		}
+
+		callback(null, row || null);
+	});
 }
 
 function updatePatientStatus(patientId, inputStatus, callback) {
@@ -424,6 +511,369 @@ app.get("/patients/:id/records", (req, res) => {
 	);
 });
 
+app.get("/appointments", (req, res) => {
+	const fromValue = parseIsoDateTime(req.query.from);
+	const toValue = parseIsoDateTime(req.query.to);
+	const patientId = req.query.patientId ? Number(req.query.patientId) : null;
+
+	if (!fromValue || !toValue) {
+		res.status(400).json({ error: "Invalid date range" });
+		return;
+	}
+
+	if (fromValue.getTime() >= toValue.getTime()) {
+		res.status(400).json({ error: "Invalid date range" });
+		return;
+	}
+
+	const params = [toValue.toISOString(), fromValue.toISOString()];
+	let appointmentsSql = `
+		SELECT
+			a.appointment_id AS id,
+			a.patient_id,
+			p.name AS patient_name,
+			a.title,
+			a.start_time,
+			a.end_time,
+			COALESCE(a.location, '') AS location,
+			COALESCE(a.notes, '') AS notes,
+			LOWER(COALESCE(a.status, 'scheduled')) AS status,
+			a.created_at,
+			a.updated_at
+		FROM appointments a
+		INNER JOIN patients p ON p.patient_id = a.patient_id
+		WHERE LOWER(COALESCE(a.status, '')) != 'cancelled'
+			AND a.start_time < ?
+			AND a.end_time > ?
+	`;
+
+	if (Number.isInteger(patientId) && patientId > 0) {
+		appointmentsSql += ` AND a.patient_id = ?`;
+		params.push(patientId);
+	}
+
+	appointmentsSql += ` ORDER BY a.start_time ASC, a.appointment_id ASC`;
+
+	db.all(appointmentsSql, params, (err, rows) => {
+		if (err) {
+			res.status(500).json({
+				error: "Could not fetch appointments",
+				details: err.message,
+			});
+			return;
+		}
+
+		res.json({ appointments: rows || [] });
+	});
+});
+
+app.post("/appointments", (req, res) => {
+	const { patientId, title, startTime, endTime, location, notes } =
+		req.body || {};
+	const parsedPatientId = Number(patientId);
+	const normalizedTitle = String(title || "").trim();
+	const normalizedLocation = String(location || "").trim();
+	const normalizedNotes = String(notes || "").trim();
+	const parsedStartTime = parseIsoDateTime(startTime);
+	const parsedEndTime = parseIsoDateTime(endTime);
+
+	if (!Number.isInteger(parsedPatientId) || parsedPatientId <= 0) {
+		res.status(400).json({ error: "Invalid patient ID" });
+		return;
+	}
+
+	if (!normalizedTitle || !parsedStartTime || !parsedEndTime) {
+		res.status(400).json({ error: "Missing required fields" });
+		return;
+	}
+
+	if (parsedStartTime.getTime() >= parsedEndTime.getTime()) {
+		res.status(400).json({
+			error: "Appointment end time must be after start time",
+		});
+		return;
+	}
+
+	db.get(
+		`SELECT patient_id, name FROM patients WHERE patient_id = ?`,
+		[parsedPatientId],
+		(patientErr, patientRow) => {
+			if (patientErr) {
+				res.status(500).json({
+					error: "Could not verify patient exists",
+					details: patientErr.message,
+				});
+				return;
+			}
+
+			if (!patientRow) {
+				res.status(404).json({ error: "Patient not found" });
+				return;
+			}
+
+			findAppointmentConflict(
+				parsedStartTime.toISOString(),
+				parsedEndTime.toISOString(),
+				null,
+				(conflictErr, conflictRow) => {
+					if (conflictErr) {
+						res.status(500).json({
+							error: "Could not check appointment conflicts",
+							details: conflictErr.message,
+						});
+						return;
+					}
+
+					if (conflictRow) {
+						res.status(409).json({
+							error: "Appointment conflict detected",
+							details: `Already booked for ${conflictRow.patient_name} from ${conflictRow.start_time} to ${conflictRow.end_time}`,
+						});
+						return;
+					}
+
+					db.run(
+						`INSERT INTO appointments (
+							patient_id,
+							title,
+							start_time,
+							end_time,
+							location,
+							notes,
+							status,
+							created_at,
+							updated_at
+						) VALUES (?, ?, ?, ?, ?, ?, 'scheduled', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+						[
+							parsedPatientId,
+							normalizedTitle,
+							parsedStartTime.toISOString(),
+							parsedEndTime.toISOString(),
+							normalizedLocation,
+							normalizedNotes,
+						],
+						function insertAppointment(insertErr) {
+							if (insertErr) {
+								res.status(500).json({
+									error: "Could not save appointment",
+									details: insertErr.message,
+								});
+								return;
+							}
+
+							res.status(201).json({
+								id: this.lastID,
+								message: "Appointment booked",
+							});
+						},
+					);
+				},
+			);
+		},
+	);
+});
+
+app.put("/appointments/:id", (req, res) => {
+	const appointmentId = Number(req.params.id);
+	const { patientId, title, startTime, endTime, location, notes } =
+		req.body || {};
+	const parsedPatientId = Number(patientId);
+	const normalizedTitle = String(title || "").trim();
+	const normalizedLocation = String(location || "").trim();
+	const normalizedNotes = String(notes || "").trim();
+	const parsedStartTime = parseIsoDateTime(startTime);
+	const parsedEndTime = parseIsoDateTime(endTime);
+
+	if (!Number.isInteger(appointmentId) || appointmentId <= 0) {
+		res.status(400).json({ error: "Invalid appointment ID" });
+		return;
+	}
+
+	if (!Number.isInteger(parsedPatientId) || parsedPatientId <= 0) {
+		res.status(400).json({ error: "Invalid patient ID" });
+		return;
+	}
+
+	if (!normalizedTitle || !parsedStartTime || !parsedEndTime) {
+		res.status(400).json({ error: "Missing required fields" });
+		return;
+	}
+
+	if (parsedStartTime.getTime() >= parsedEndTime.getTime()) {
+		res.status(400).json({
+			error: "Appointment end time must be after start time",
+		});
+		return;
+	}
+
+	db.get(
+		`SELECT appointment_id, status FROM appointments WHERE appointment_id = ?`,
+		[appointmentId],
+		(appointmentErr, appointmentRow) => {
+			if (appointmentErr) {
+				res.status(500).json({
+					error: "Could not verify appointment exists",
+					details: appointmentErr.message,
+				});
+				return;
+			}
+
+			if (!appointmentRow) {
+				res.status(404).json({ error: "Appointment not found" });
+				return;
+			}
+
+			if (
+				normalizeAppointmentStatus(appointmentRow.status) ===
+				"cancelled"
+			) {
+				res.status(400).json({
+					error: "Cancelled appointments cannot be rescheduled",
+				});
+				return;
+			}
+
+			db.get(
+				`SELECT patient_id, name FROM patients WHERE patient_id = ?`,
+				[parsedPatientId],
+				(patientErr, patientRow) => {
+					if (patientErr) {
+						res.status(500).json({
+							error: "Could not verify patient exists",
+							details: patientErr.message,
+						});
+						return;
+					}
+
+					if (!patientRow) {
+						res.status(404).json({ error: "Patient not found" });
+						return;
+					}
+
+					findAppointmentConflict(
+						parsedStartTime.toISOString(),
+						parsedEndTime.toISOString(),
+						appointmentId,
+						(conflictErr, conflictRow) => {
+							if (conflictErr) {
+								res.status(500).json({
+									error: "Could not check appointment conflicts",
+									details: conflictErr.message,
+								});
+								return;
+							}
+
+							if (conflictRow) {
+								res.status(409).json({
+									error: "Appointment conflict detected",
+									details: `Already booked for ${conflictRow.patient_name} from ${conflictRow.start_time} to ${conflictRow.end_time}`,
+								});
+								return;
+							}
+
+							db.run(
+								`UPDATE appointments
+								SET patient_id = ?,
+									title = ?,
+									start_time = ?,
+									end_time = ?,
+									location = ?,
+									notes = ?,
+									status = 'scheduled',
+									updated_at = CURRENT_TIMESTAMP
+								WHERE appointment_id = ?`,
+								[
+									parsedPatientId,
+									normalizedTitle,
+									parsedStartTime.toISOString(),
+									parsedEndTime.toISOString(),
+									normalizedLocation,
+									normalizedNotes,
+									appointmentId,
+								],
+								function updateAppointment(updateErr) {
+									if (updateErr) {
+										res.status(500).json({
+											error: "Could not update appointment",
+											details: updateErr.message,
+										});
+										return;
+									}
+
+									res.json({
+										id: appointmentId,
+										message: "Appointment rescheduled",
+									});
+								},
+							);
+						},
+					);
+				},
+			);
+		},
+	);
+});
+
+app.patch("/appointments/:id/cancel", (req, res) => {
+	const appointmentId = Number(req.params.id);
+
+	if (!Number.isInteger(appointmentId) || appointmentId <= 0) {
+		res.status(400).json({ error: "Invalid appointment ID" });
+		return;
+	}
+
+	db.get(
+		`SELECT appointment_id, status FROM appointments WHERE appointment_id = ?`,
+		[appointmentId],
+		(appointmentErr, appointmentRow) => {
+			if (appointmentErr) {
+				res.status(500).json({
+					error: "Could not verify appointment exists",
+					details: appointmentErr.message,
+				});
+				return;
+			}
+
+			if (!appointmentRow) {
+				res.status(404).json({ error: "Appointment not found" });
+				return;
+			}
+
+			if (
+				normalizeAppointmentStatus(appointmentRow.status) ===
+				"cancelled"
+			) {
+				res.json({
+					id: appointmentId,
+					message: "Appointment already cancelled",
+				});
+				return;
+			}
+
+			db.run(
+				`UPDATE appointments
+				SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+				WHERE appointment_id = ?`,
+				[appointmentId],
+				function cancelAppointment(cancelErr) {
+					if (cancelErr) {
+						res.status(500).json({
+							error: "Could not cancel appointment",
+							details: cancelErr.message,
+						});
+						return;
+					}
+
+					res.json({
+						id: appointmentId,
+						message: "Appointment cancelled",
+					});
+				},
+			);
+		},
+	);
+});
+
 app.delete("/patients/:id", (req, res) => {
 	const patientId = Number(req.params.id);
 
@@ -455,6 +905,7 @@ app.delete("/patients/:id", (req, res) => {
 				"diagnoses",
 				"patient_medications",
 				"lab_results",
+				"appointments",
 			];
 
 			const deleteRows = dependentTables.map(

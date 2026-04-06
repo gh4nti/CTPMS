@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import App from "./App";
+import Appointments from "./Appointments";
 import AllPatients from "./AllPatients";
 import PatientProfile from "./PatientProfile";
 import ProtectedRoute from "./ProtectedRoute";
@@ -134,6 +135,19 @@ function AppWrapper() {
 							error={error}
 						>
 							<AllPatients onLogout={handleLogout} />
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="/appointments"
+					element={
+						<ProtectedRoute
+							isAuthenticated={isAuthenticated}
+							onLogin={handleLogin}
+							isLoading={isLoading}
+							error={error}
+						>
+							<Appointments />
 						</ProtectedRoute>
 					}
 				/>

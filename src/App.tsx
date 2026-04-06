@@ -193,14 +193,22 @@ export default function App({ onLogout }: AppProps) {
 							Admin Dashboard
 						</h1>
 					</div>
-					{onLogout && (
-						<button
-							onClick={onLogout}
-							className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700"
+					<div className="flex flex-wrap gap-3">
+						<Link
+							to="/appointments"
+							className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
 						>
-							Logout
-						</button>
-					)}
+							Appointments
+						</Link>
+						{onLogout && (
+							<button
+								onClick={onLogout}
+								className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700"
+							>
+								Logout
+							</button>
+						)}
+					</div>
 				</div>
 
 				<section className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-xl shadow-slate-200/70 backdrop-blur sm:p-8">
