@@ -441,6 +441,459 @@ function updatePatientStatus(patientId, inputStatus, callback) {
 	);
 }
 
+function runAsync(sql, params = []) {
+	return new Promise((resolve, reject) => {
+		db.run(sql, params, function runCallback(err) {
+			if (err) {
+				reject(err);
+				return;
+			}
+
+			resolve({ lastID: this.lastID, changes: this.changes });
+		});
+	});
+}
+
+function getAsync(sql, params = []) {
+	return new Promise((resolve, reject) => {
+		db.get(sql, params, (err, row) => {
+			if (err) {
+				reject(err);
+				return;
+			}
+
+			resolve(row || null);
+		});
+	});
+}
+
+function allAsync(sql, params = []) {
+	return new Promise((resolve, reject) => {
+		db.all(sql, params, (err, rows) => {
+			if (err) {
+				reject(err);
+				return;
+			}
+
+			resolve(rows || []);
+		});
+	});
+}
+
+function quoteIdentifier(identifier) {
+	return `"${String(identifier || "").replace(/"/g, '""')}"`;
+}
+
+function normalizeImportPatientRecord(record) {
+	const source = record && typeof record === "object" ? record : {};
+
+	const fullName = String(
+		source.fullName || source.full_name || source.name || "",
+	).trim();
+	const dob = String(source.dob || source.date_of_birth || "").trim();
+	const gender = String(source.gender || "").trim();
+	const phone = String(source.phone || "").trim();
+	const email = String(source.email || "").trim();
+	const heightCm = String(source.heightCm || source.height_cm || "").trim();
+	const weightKg = String(source.weightKg || source.weight_kg || "").trim();
+	const bloodGroup = String(
+		source.bloodGroup || source.blood_group || "",
+	).trim();
+	const enrollmentStatus = String(
+		source.enrollmentStatus || source.enrollment_status || "",
+	).trim();
+
+	return {
+		fullName,
+		dob,
+		gender,
+		phone,
+		email,
+		heightCm,
+		weightKg,
+		bloodGroup,
+		enrollmentStatus,
+	};
+}
+
+function validateImportPatientRecord(normalizedRecord) {
+	const errors = [];
+
+	if (!normalizedRecord.fullName) {
+		errors.push("Full name is required");
+	}
+
+	if (!normalizedRecord.dob) {
+		errors.push("Date of birth is required");
+	} else {
+		const dobDate = new Date(normalizedRecord.dob);
+		if (Number.isNaN(dobDate.getTime())) {
+			errors.push("Date of birth must be a valid date");
+		} else if (dobDate > new Date()) {
+			errors.push("Date of birth cannot be in the future");
+		}
+	}
+
+	if (!normalizedRecord.gender) {
+		errors.push("Gender is required");
+	}
+
+	if (!normalizedRecord.phone) {
+		errors.push("Phone number is required");
+	} else if (!/^\+?[\d\s\-()]{7,}$/i.test(normalizedRecord.phone)) {
+		errors.push("Phone number is invalid");
+	}
+
+	if (!normalizedRecord.email) {
+		errors.push("Email is required");
+	} else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedRecord.email)) {
+		errors.push("Email is invalid");
+	}
+
+	if (!normalizedRecord.heightCm) {
+		errors.push("Height is required");
+	} else {
+		const parsedHeight = Number(normalizedRecord.heightCm);
+		if (
+			!Number.isFinite(parsedHeight) ||
+			parsedHeight <= 0 ||
+			parsedHeight > 300
+		) {
+			errors.push("Height must be between 1 and 300 cm");
+		}
+	}
+
+	if (!normalizedRecord.weightKg) {
+		errors.push("Weight is required");
+	} else {
+		const parsedWeight = Number(normalizedRecord.weightKg);
+		if (
+			!Number.isFinite(parsedWeight) ||
+			parsedWeight <= 0 ||
+			parsedWeight > 500
+		) {
+			errors.push("Weight must be between 1 and 500 kg");
+		}
+	}
+
+	if (!normalizedRecord.bloodGroup) {
+		errors.push("Blood group is required");
+	}
+
+	const normalizedStatus = normalizePatientStatus(
+		normalizedRecord.enrollmentStatus,
+	);
+	if (normalizedRecord.enrollmentStatus && !normalizedStatus) {
+		errors.push("Enrollment status is invalid");
+	}
+
+	return errors;
+}
+
+async function buildImportPreview(records) {
+	if (!Array.isArray(records)) {
+		throw new Error("Request body must include a records array");
+	}
+
+	const existingPatients = await allAsync(
+		`SELECT LOWER(TRIM(name)) AS normalized_name, LOWER(TRIM(email)) AS normalized_email FROM patients`,
+	);
+
+	const existingNames = new Set(
+		existingPatients.map((row) => String(row.normalized_name || "")),
+	);
+	const existingEmails = new Set(
+		existingPatients.map((row) => String(row.normalized_email || "")),
+	);
+
+	const pendingNames = new Set();
+	const pendingEmails = new Set();
+	const validRecords = [];
+	const rows = records.map((record, index) => {
+		const normalized = normalizeImportPatientRecord(record);
+		const errors = validateImportPatientRecord(normalized);
+
+		const normalizedName = normalized.fullName.toLowerCase();
+		const normalizedEmail = normalized.email.toLowerCase();
+
+		if (!errors.length) {
+			if (
+				existingNames.has(normalizedName) ||
+				pendingNames.has(normalizedName)
+			) {
+				errors.push("Duplicate full name");
+			}
+
+			if (
+				existingEmails.has(normalizedEmail) ||
+				pendingEmails.has(normalizedEmail)
+			) {
+				errors.push("Duplicate email");
+			}
+		}
+
+		const valid = errors.length === 0;
+
+		if (valid) {
+			pendingNames.add(normalizedName);
+			pendingEmails.add(normalizedEmail);
+			validRecords.push(normalized);
+		}
+
+		return {
+			index: index + 1,
+			record: normalized,
+			valid,
+			errors,
+		};
+	});
+
+	const invalidCount = rows.filter((row) => !row.valid).length;
+
+	return {
+		summary: {
+			total: rows.length,
+			valid: rows.length - invalidCount,
+			invalid: invalidCount,
+		},
+		rows,
+		validRecords,
+	};
+}
+
+app.post("/patients/import/preview", async (req, res) => {
+	const actor = requirePermission(req, res, "patients:create");
+	if (!actor) {
+		return;
+	}
+
+	try {
+		const preview = await buildImportPreview(req.body && req.body.records);
+		res.json({
+			summary: preview.summary,
+			rows: preview.rows,
+		});
+	} catch (err) {
+		res.status(400).json({
+			error: "Could not preview import",
+			details: err instanceof Error ? err.message : "Unknown error",
+		});
+	}
+});
+
+app.post("/patients/import/commit", async (req, res) => {
+	const actor = requirePermission(req, res, "patients:create");
+	if (!actor) {
+		return;
+	}
+
+	try {
+		const preview = await buildImportPreview(req.body && req.body.records);
+
+		if (!preview.validRecords.length) {
+			res.status(400).json({
+				error: "No valid records to import",
+				details: "Fix validation errors and try again",
+				summary: preview.summary,
+			});
+			return;
+		}
+
+		const nextIdRow = await getAsync(
+			`SELECT COALESCE(MAX(patient_id), 0) + 1 AS nextId FROM patients`,
+		);
+
+		let nextId = Number(nextIdRow && nextIdRow.nextId);
+		await runAsync("BEGIN TRANSACTION");
+
+		try {
+			for (const record of preview.validRecords) {
+				await runAsync(
+					`INSERT INTO patients (
+						patient_id,
+						name,
+						date_of_birth,
+						gender,
+						phone,
+						email,
+						height_cm,
+						weight_kg,
+						blood_group
+					) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					[
+						nextId,
+						record.fullName,
+						record.dob,
+						normalizeGender(record.gender),
+						record.phone,
+						record.email,
+						Number(record.heightCm),
+						Number(record.weightKg),
+						record.bloodGroup.toUpperCase(),
+					],
+				);
+				nextId += 1;
+			}
+
+			await runAsync("COMMIT");
+		} catch (insertErr) {
+			await runAsync("ROLLBACK");
+			throw insertErr;
+		}
+
+		logAuditEvent(req, {
+			actor,
+			action: "patients.import",
+			entityType: "patient",
+			entityId: null,
+			before: null,
+			after: {
+				imported_count: preview.validRecords.length,
+				rejected_count: preview.summary.invalid,
+			},
+		});
+
+		res.status(201).json({
+			message: "Patient import completed",
+			summary: {
+				total: preview.summary.total,
+				inserted: preview.validRecords.length,
+				rejected: preview.summary.invalid,
+			},
+		});
+	} catch (err) {
+		res.status(500).json({
+			error: "Could not import patients",
+			details: err instanceof Error ? err.message : "Unknown error",
+		});
+	}
+});
+
+app.get("/system/backup", async (req, res) => {
+	const actor = requirePermission(req, res, "patients:delete");
+	if (!actor) {
+		return;
+	}
+
+	try {
+		const tableRows = await allAsync(
+			`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name ASC`,
+		);
+
+		const tableNames = tableRows.map((row) => row.name);
+		const tables = {};
+
+		for (const tableName of tableNames) {
+			const rows = await allAsync(
+				`SELECT * FROM ${quoteIdentifier(tableName)}`,
+			);
+			tables[tableName] = rows;
+		}
+
+		res.json({
+			version: 1,
+			exported_at: new Date().toISOString(),
+			tables,
+		});
+	} catch (err) {
+		res.status(500).json({
+			error: "Could not create backup",
+			details: err instanceof Error ? err.message : "Unknown error",
+		});
+	}
+});
+
+app.post("/system/restore", async (req, res) => {
+	const actor = requirePermission(req, res, "patients:delete");
+	if (!actor) {
+		return;
+	}
+
+	const payload = req.body || {};
+	if (!payload.tables || typeof payload.tables !== "object") {
+		res.status(400).json({
+			error: "Invalid restore payload",
+			details: "Payload must include a tables object",
+		});
+		return;
+	}
+
+	try {
+		const tableRows = await allAsync(
+			`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name ASC`,
+		);
+		const knownTableNames = tableRows.map((row) => row.name);
+
+		await runAsync("PRAGMA foreign_keys = OFF");
+		await runAsync("BEGIN TRANSACTION");
+
+		try {
+			for (const tableName of knownTableNames) {
+				await runAsync(`DELETE FROM ${quoteIdentifier(tableName)}`);
+			}
+
+			for (const tableName of knownTableNames) {
+				const rows = Array.isArray(payload.tables[tableName])
+					? payload.tables[tableName]
+					: [];
+
+				if (!rows.length) {
+					continue;
+				}
+
+				const columns = await allAsync(
+					`PRAGMA table_info(${quoteIdentifier(tableName)})`,
+				);
+				const columnNames = columns.map((column) => column.name);
+				const columnSql = columnNames
+					.map((columnName) => quoteIdentifier(columnName))
+					.join(", ");
+				const valueSql = columnNames.map(() => "?").join(", ");
+
+				for (const row of rows) {
+					const values = columnNames.map((columnName) =>
+						Object.prototype.hasOwnProperty.call(row, columnName)
+							? row[columnName]
+							: null,
+					);
+
+					await runAsync(
+						`INSERT INTO ${quoteIdentifier(tableName)} (${columnSql}) VALUES (${valueSql})`,
+						values,
+					);
+				}
+			}
+
+			await runAsync("COMMIT");
+		} catch (restoreErr) {
+			await runAsync("ROLLBACK");
+			throw restoreErr;
+		} finally {
+			await runAsync("PRAGMA foreign_keys = ON");
+		}
+
+		logAuditEvent(req, {
+			actor,
+			action: "system.restore",
+			entityType: "system",
+			entityId: null,
+			before: null,
+			after: {
+				restored_at: new Date().toISOString(),
+			},
+		});
+
+		res.json({
+			message: "Restore completed successfully",
+		});
+	} catch (err) {
+		res.status(500).json({
+			error: "Could not restore backup",
+			details: err instanceof Error ? err.message : "Unknown error",
+		});
+	}
+});
+
 app.get("/patients", (req, res) => {
 	db.all(
 		`WITH latest_match AS (
