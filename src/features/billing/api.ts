@@ -7,6 +7,7 @@ import type {
 	CreatePaymentRequest,
 	UpdateInvoiceStatusRequest,
 } from "./types";
+import { fetchWithAuth } from "../../auth";
 
 const API_BASE = "/api";
 
@@ -18,7 +19,9 @@ export async function getInvoices(
 	if (patientId) params.append("patientId", String(patientId));
 	if (status) params.append("status", status);
 
-	const response = await fetch(`${API_BASE}/invoices?${params.toString()}`);
+	const response = await fetchWithAuth(
+		`${API_BASE}/invoices?${params.toString()}`,
+	);
 
 	if (!response.ok) {
 		throw new Error(`Failed to fetch invoices: ${response.statusText}`);
@@ -31,7 +34,7 @@ export async function getInvoices(
 export async function getInvoiceDetail(
 	invoiceId: number,
 ): Promise<InvoiceDetail> {
-	const response = await fetch(`${API_BASE}/invoices/${invoiceId}`);
+	const response = await fetchWithAuth(`${API_BASE}/invoices/${invoiceId}`);
 
 	if (!response.ok) {
 		throw new Error(`Failed to fetch invoice: ${response.statusText}`);
@@ -43,7 +46,7 @@ export async function getInvoiceDetail(
 export async function createInvoice(
 	data: CreateInvoiceRequest,
 ): Promise<{ id: number; invoice_number: string }> {
-	const response = await fetch(`${API_BASE}/invoices`, {
+	const response = await fetchWithAuth(`${API_BASE}/invoices`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(data),
@@ -61,11 +64,14 @@ export async function updateInvoiceStatus(
 	invoiceId: number,
 	data: UpdateInvoiceStatusRequest,
 ): Promise<{ id: number; status: string }> {
-	const response = await fetch(`${API_BASE}/invoices/${invoiceId}/status`, {
-		method: "PATCH",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(data),
-	});
+	const response = await fetchWithAuth(
+		`${API_BASE}/invoices/${invoiceId}/status`,
+		{
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(data),
+		},
+	);
 
 	if (!response.ok) {
 		const error = await response.json();
@@ -85,7 +91,9 @@ export async function getPayments(
 	if (patientId) params.append("patientId", String(patientId));
 	if (status) params.append("status", status);
 
-	const response = await fetch(`${API_BASE}/payments?${params.toString()}`);
+	const response = await fetchWithAuth(
+		`${API_BASE}/payments?${params.toString()}`,
+	);
 
 	if (!response.ok) {
 		throw new Error(`Failed to fetch payments: ${response.statusText}`);
@@ -98,7 +106,7 @@ export async function getPayments(
 export async function getPaymentDetail(
 	paymentId: number,
 ): Promise<PaymentDetail> {
-	const response = await fetch(`${API_BASE}/payments/${paymentId}`);
+	const response = await fetchWithAuth(`${API_BASE}/payments/${paymentId}`);
 
 	if (!response.ok) {
 		throw new Error(`Failed to fetch payment: ${response.statusText}`);
@@ -110,7 +118,7 @@ export async function getPaymentDetail(
 export async function createPayment(
 	data: CreatePaymentRequest,
 ): Promise<{ id: number; fully_paid: boolean }> {
-	const response = await fetch(`${API_BASE}/payments`, {
+	const response = await fetchWithAuth(`${API_BASE}/payments`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(data),

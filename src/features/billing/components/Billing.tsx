@@ -4,13 +4,18 @@ import type { Invoice } from "../types";
 import { InvoiceList } from "./InvoiceList";
 import { InvoiceDetailView } from "./InvoiceDetailView";
 import { CreateInvoiceModal } from "./CreateInvoiceModal";
+import { AuthUser, fetchWithAuth, hasPermission } from "../../../auth";
 
 interface PatientOption {
 	id: number;
 	full_name: string;
 }
 
-export function Billing() {
+interface BillingProps {
+	currentUser: AuthUser | null;
+}
+
+export function Billing({ currentUser }: BillingProps) {
 	const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(
 		null,
 	);
@@ -18,12 +23,19 @@ export function Billing() {
 	const [refreshKey, setRefreshKey] = useState(0);
 	const [patients, setPatients] = useState<PatientOption[]>([]);
 	const [loadingPatients, setLoadingPatients] = useState(true);
+	const canManageBilling = Boolean(
+		currentUser && hasPermission(currentUser.role, "billing:write"),
+	);
 
 	useEffect(() => {
 		const fetchPatients = async () => {
 			try {
 				setLoadingPatients(true);
-				const response = await fetch("/api/patients");
+				const response = await fetchWithAuth(
+					"/api/patients",
+					{},
+					currentUser,
+				);
 				if (response.ok) {
 					const data = await response.json();
 					setPatients(
@@ -41,7 +53,7 @@ export function Billing() {
 		};
 
 		fetchPatients();
-	}, []);
+	}, [currentUser]);
 
 	const handleRefresh = () => {
 		setRefreshKey((prev) => prev + 1);
@@ -79,7 +91,7 @@ export function Billing() {
 						</h2>
 						<button
 							onClick={() => setShowCreateModal(true)}
-							disabled={loadingPatients}
+							disabled={loadingPatients || !canManageBilling}
 							className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:opacity-50"
 						>
 							+ New Invoice
@@ -94,6 +106,7 @@ export function Billing() {
 				{selectedInvoice && (
 					<InvoiceDetailView
 						invoiceId={selectedInvoice.id}
+						canManageBilling={canManageBilling}
 						onClose={() => setSelectedInvoice(null)}
 						onInvoiceUpdated={handleRefresh}
 					/>
@@ -102,6 +115,7 @@ export function Billing() {
 				{showCreateModal && (
 					<CreateInvoiceModal
 						patients={patients}
+						canManageBilling={canManageBilling}
 						onClose={() => setShowCreateModal(false)}
 						onSuccess={handleRefresh}
 					/>

@@ -4,6 +4,7 @@ import {
 	Patient,
 	PatientUpdatePayload,
 } from "./types";
+import { fetchWithAuth } from "../../auth";
 
 interface ApiErrorBody {
 	error?: string;
@@ -28,7 +29,7 @@ async function buildApiError(response: Response): Promise<ApiError> {
 }
 
 export async function fetchPatientById(id: string): Promise<Patient> {
-	const response = await fetch(`/api/patients/${id}`);
+	const response = await fetchWithAuth(`/api/patients/${id}`);
 	if (!response.ok) {
 		throw await buildApiError(response);
 	}
@@ -39,7 +40,7 @@ export async function fetchPatientById(id: string): Promise<Patient> {
 export async function fetchPatientRecordsById(
 	id: string,
 ): Promise<ClinicalRecords> {
-	const response = await fetch(`/api/patients/${id}/records`);
+	const response = await fetchWithAuth(`/api/patients/${id}/records`);
 	if (!response.ok) {
 		throw await buildApiError(response);
 	}
@@ -57,7 +58,7 @@ export async function updatePatientById(
 	id: string,
 	payload: PatientUpdatePayload,
 ): Promise<void> {
-	const response = await fetch(`/api/patients/${id}`, {
+	const response = await fetchWithAuth(`/api/patients/${id}`, {
 		method: "PUT",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(payload),
@@ -69,7 +70,7 @@ export async function updatePatientById(
 }
 
 export async function deletePatientById(id: string): Promise<void> {
-	const response = await fetch(`/api/patients/${id}`, {
+	const response = await fetchWithAuth(`/api/patients/${id}`, {
 		method: "DELETE",
 	});
 

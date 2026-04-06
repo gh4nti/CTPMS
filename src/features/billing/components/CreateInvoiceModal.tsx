@@ -4,6 +4,7 @@ import { createInvoice } from "../api";
 interface CreateInvoiceModalProps {
 	patientId?: number;
 	patients?: Array<{ id: number; full_name: string }>;
+	canManageBilling: boolean;
 	onClose: () => void;
 	onSuccess: () => void;
 }
@@ -11,6 +12,7 @@ interface CreateInvoiceModalProps {
 export function CreateInvoiceModal({
 	patientId,
 	patients = [],
+	canManageBilling,
 	onClose,
 	onSuccess,
 }: CreateInvoiceModalProps) {
@@ -41,6 +43,11 @@ export function CreateInvoiceModal({
 
 		if (!selectedPatientId || !amount || !dueDate) {
 			setError("All fields are required");
+			return;
+		}
+
+		if (!canManageBilling) {
+			setError("You do not have permission to create invoices.");
 			return;
 		}
 

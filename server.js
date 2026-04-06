@@ -20,6 +20,27 @@ const db = new sqlite3.Database(dbPath);
 
 db.serialize(() => {
 	db.run(`
+		CREATE TABLE IF NOT EXISTS audit_logs (
+			audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+			actor_username TEXT NOT NULL,
+			actor_role TEXT NOT NULL,
+			action TEXT NOT NULL,
+			entity_type TEXT NOT NULL,
+			entity_id TEXT,
+			before_json TEXT,
+			after_json TEXT,
+			metadata_json TEXT,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`);
+	db.run(
+		`CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)`,
+	);
+	db.run(
+		`CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id)`,
+	);
+
+	db.run(`
 		CREATE TABLE IF NOT EXISTS appointments (
 			appointment_id INTEGER PRIMARY KEY AUTOINCREMENT,
 			patient_id INTEGER NOT NULL,
@@ -90,6 +111,96 @@ db.serialize(() => {
 		`CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)`,
 	);
 });
+
+const ROLE_PERMISSIONS = {
+	admin: new Set([
+		"patients:create",
+		"patients:edit",
+		"patients:delete",
+		"appointments:write",
+		"billing:write",
+		"audit:read",
+	]),
+	guest: new Set([]),
+};
+
+function safeJsonStringify(value) {
+	if (value === undefined) {
+		return null;
+	}
+
+	try {
+		return JSON.stringify(value);
+	} catch {
+		return null;
+	}
+}
+
+function getActorFromRequest(req) {
+	const rawRole = String(req.header("x-ctpms-role") || "guest")
+		.trim()
+		.toLowerCase();
+	const role = rawRole === "admin" ? "admin" : "guest";
+	const username =
+		String(req.header("x-ctpms-user") || role)
+			.trim()
+			.slice(0, 120) || role;
+
+	return { role, username };
+}
+
+function requirePermission(req, res, permission) {
+	const actor = getActorFromRequest(req);
+	const rolePermissions = ROLE_PERMISSIONS[actor.role] || new Set();
+
+	if (!rolePermissions.has(permission)) {
+		res.status(403).json({
+			error: "Forbidden",
+			details: `Missing permission: ${permission}`,
+		});
+		return null;
+	}
+
+	return actor;
+}
+
+function logAuditEvent(req, event) {
+	const metadata = {
+		method: req.method,
+		path: req.originalUrl || req.url,
+		ip: req.ip,
+		userAgent: req.get("user-agent") || "",
+	};
+
+	db.run(
+		`INSERT INTO audit_logs (
+			actor_username,
+			actor_role,
+			action,
+			entity_type,
+			entity_id,
+			before_json,
+			after_json,
+			metadata_json,
+			created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+		[
+			event.actor.username,
+			event.actor.role,
+			event.action,
+			event.entityType,
+			event.entityId == null ? null : String(event.entityId),
+			safeJsonStringify(event.before),
+			safeJsonStringify(event.after),
+			safeJsonStringify(metadata),
+		],
+		(err) => {
+			if (err) {
+				console.error("Could not write audit log:", err.message);
+			}
+		},
+	);
+}
 
 function normalizeGender(inputGender) {
 	const normalized = String(inputGender || "")
@@ -659,6 +770,11 @@ app.get("/appointments", (req, res) => {
 });
 
 app.post("/appointments", (req, res) => {
+	const actor = requirePermission(req, res, "appointments:write");
+	if (!actor) {
+		return;
+	}
+
 	const { patientId, title, startTime, endTime, location, notes } =
 		req.body || {};
 	const parsedPatientId = Number(patientId);
@@ -752,6 +868,21 @@ app.post("/appointments", (req, res) => {
 								return;
 							}
 
+							logAuditEvent(req, {
+								actor,
+								action: "appointments.create",
+								entityType: "appointment",
+								entityId: this.lastID,
+								before: null,
+								after: {
+									patientId: parsedPatientId,
+									title: normalizedTitle,
+									startTime: parsedStartTime.toISOString(),
+									endTime: parsedEndTime.toISOString(),
+									location: normalizedLocation,
+								},
+							});
+
 							res.status(201).json({
 								id: this.lastID,
 								message: "Appointment booked",
@@ -765,6 +896,11 @@ app.post("/appointments", (req, res) => {
 });
 
 app.put("/appointments/:id", (req, res) => {
+	const actor = requirePermission(req, res, "appointments:write");
+	if (!actor) {
+		return;
+	}
+
 	const appointmentId = Number(req.params.id);
 	const { patientId, title, startTime, endTime, location, notes } =
 		req.body || {};
@@ -798,7 +934,7 @@ app.put("/appointments/:id", (req, res) => {
 	}
 
 	db.get(
-		`SELECT appointment_id, status FROM appointments WHERE appointment_id = ?`,
+		`SELECT appointment_id, patient_id, title, start_time, end_time, location, notes, status FROM appointments WHERE appointment_id = ?`,
 		[appointmentId],
 		(appointmentErr, appointmentRow) => {
 			if (appointmentErr) {
@@ -891,6 +1027,25 @@ app.put("/appointments/:id", (req, res) => {
 										return;
 									}
 
+									logAuditEvent(req, {
+										actor,
+										action: "appointments.update",
+										entityType: "appointment",
+										entityId: appointmentId,
+										before: appointmentRow,
+										after: {
+											patient_id: parsedPatientId,
+											title: normalizedTitle,
+											start_time:
+												parsedStartTime.toISOString(),
+											end_time:
+												parsedEndTime.toISOString(),
+											location: normalizedLocation,
+											notes: normalizedNotes,
+											status: "scheduled",
+										},
+									});
+
 									res.json({
 										id: appointmentId,
 										message: "Appointment rescheduled",
@@ -906,6 +1061,11 @@ app.put("/appointments/:id", (req, res) => {
 });
 
 app.patch("/appointments/:id/cancel", (req, res) => {
+	const actor = requirePermission(req, res, "appointments:write");
+	if (!actor) {
+		return;
+	}
+
 	const appointmentId = Number(req.params.id);
 
 	if (!Number.isInteger(appointmentId) || appointmentId <= 0) {
@@ -954,6 +1114,15 @@ app.patch("/appointments/:id/cancel", (req, res) => {
 						});
 						return;
 					}
+
+					logAuditEvent(req, {
+						actor,
+						action: "appointments.cancel",
+						entityType: "appointment",
+						entityId: appointmentId,
+						before: appointmentRow,
+						after: { status: "cancelled" },
+					});
 
 					res.json({
 						id: appointmentId,
@@ -1084,6 +1253,11 @@ app.get("/invoices/:id", (req, res) => {
 });
 
 app.post("/invoices", (req, res) => {
+	const actor = requirePermission(req, res, "billing:write");
+	if (!actor) {
+		return;
+	}
+
 	const { patientId, amount, description, dueDate } = req.body || {};
 	const parsedPatientId = Number(patientId);
 	const parsedAmount = Number(amount);
@@ -1153,6 +1327,21 @@ app.post("/invoices", (req, res) => {
 						return;
 					}
 
+					logAuditEvent(req, {
+						actor,
+						action: "invoices.create",
+						entityType: "invoice",
+						entityId: this.lastID,
+						before: null,
+						after: {
+							patientId: parsedPatientId,
+							invoiceNumber,
+							amount: parsedAmount,
+							dueDate: parsedDueDate.toISOString(),
+							status: "pending",
+						},
+					});
+
 					res.status(201).json({
 						id: this.lastID,
 						invoice_number: invoiceNumber,
@@ -1165,6 +1354,11 @@ app.post("/invoices", (req, res) => {
 });
 
 app.patch("/invoices/:id/status", (req, res) => {
+	const actor = requirePermission(req, res, "billing:write");
+	if (!actor) {
+		return;
+	}
+
 	const invoiceId = Number(req.params.id);
 	const { status } = req.body || {};
 	const normalizedStatus = normalizeInvoiceStatus(status);
@@ -1209,6 +1403,15 @@ app.patch("/invoices/:id/status", (req, res) => {
 						});
 						return;
 					}
+
+					logAuditEvent(req, {
+						actor,
+						action: "invoices.status.update",
+						entityType: "invoice",
+						entityId: invoiceId,
+						before: invoiceRow,
+						after: { status: normalizedStatus },
+					});
 
 					res.json({
 						id: invoiceId,
@@ -1281,6 +1484,11 @@ app.get("/payments", (req, res) => {
 });
 
 app.post("/payments", (req, res) => {
+	const actor = requirePermission(req, res, "billing:write");
+	if (!actor) {
+		return;
+	}
+
 	const { invoiceId, amount, paymentMethod, referenceNumber, notes } =
 		req.body || {};
 	const parsedInvoiceId = Number(invoiceId);
@@ -1377,6 +1585,23 @@ app.post("/payments", (req, res) => {
 						);
 					}
 
+					logAuditEvent(req, {
+						actor,
+						action: "payments.create",
+						entityType: "payment",
+						entityId: this.lastID,
+						before: null,
+						after: {
+							invoiceId: parsedInvoiceId,
+							patientId: invoiceRow.patient_id,
+							amount: parsedAmount,
+							paymentMethod: normalizedPaymentMethod,
+							referenceNumber: normalizedReference,
+							status: "completed",
+							invoiceFullyPaid: isFullyPaid,
+						},
+					});
+
 					res.status(201).json({
 						id: this.lastID,
 						message: "Payment recorded",
@@ -1439,7 +1664,54 @@ app.get("/payments/:id", (req, res) => {
 	);
 });
 
+app.get("/audit-logs", (req, res) => {
+	const actor = requirePermission(req, res, "audit:read");
+	if (!actor) {
+		return;
+	}
+
+	const requestedLimit = Number(req.query.limit);
+	const limit =
+		Number.isInteger(requestedLimit) && requestedLimit > 0
+			? Math.min(requestedLimit, 500)
+			: 100;
+
+	db.all(
+		`SELECT
+			audit_id AS id,
+			actor_username,
+			actor_role,
+			action,
+			entity_type,
+			entity_id,
+			before_json,
+			after_json,
+			metadata_json,
+			created_at
+		FROM audit_logs
+		ORDER BY audit_id DESC
+		LIMIT ?`,
+		[limit],
+		(err, rows) => {
+			if (err) {
+				res.status(500).json({
+					error: "Could not fetch audit logs",
+					details: err.message,
+				});
+				return;
+			}
+
+			res.json({ logs: rows || [] });
+		},
+	);
+});
+
 app.delete("/patients/:id", (req, res) => {
+	const actor = requirePermission(req, res, "patients:delete");
+	if (!actor) {
+		return;
+	}
+
 	const patientId = Number(req.params.id);
 
 	if (!Number.isInteger(patientId) || patientId <= 0) {
@@ -1464,65 +1736,98 @@ app.delete("/patients/:id", (req, res) => {
 				return;
 			}
 
-			const dependentTables = [
-				"patient_trial_matches",
-				"enrollment",
-				"diagnoses",
-				"patient_medications",
-				"lab_results",
-				"appointments",
-				"payments",
-				"invoices",
-			];
+			db.get(
+				`SELECT
+					patient_id,
+					name,
+					date_of_birth,
+					gender,
+					phone,
+					email,
+					height_cm,
+					weight_kg,
+					blood_group
+				FROM patients WHERE patient_id = ?`,
+				[patientId],
+				(snapshotErr, patientSnapshot) => {
+					if (snapshotErr) {
+						res.status(500).json({
+							error: "Could not load patient before delete",
+							details: snapshotErr.message,
+						});
+						return;
+					}
 
-			const deleteRows = dependentTables.map(
-				(table) =>
-					new Promise((resolve, reject) => {
-						db.run(
-							`DELETE FROM ${table} WHERE patient_id = ?`,
-							[patientId],
-							(err) => {
-								if (err) {
-									reject(err);
-									return;
-								}
+					const dependentTables = [
+						"patient_trial_matches",
+						"enrollment",
+						"diagnoses",
+						"patient_medications",
+						"lab_results",
+						"appointments",
+						"payments",
+						"invoices",
+					];
 
-								resolve(null);
-							},
-						);
-					}),
+					const deleteRows = dependentTables.map(
+						(table) =>
+							new Promise((resolve, reject) => {
+								db.run(
+									`DELETE FROM ${table} WHERE patient_id = ?`,
+									[patientId],
+									(err) => {
+										if (err) {
+											reject(err);
+											return;
+										}
+
+										resolve(null);
+									},
+								);
+							}),
+					);
+
+					Promise.all(deleteRows)
+						.then(
+							() =>
+								new Promise((resolve, reject) => {
+									db.run(
+										`DELETE FROM patients WHERE patient_id = ?`,
+										[patientId],
+										(err) => {
+											if (err) {
+												reject(err);
+												return;
+											}
+
+											resolve(null);
+										},
+									);
+								}),
+						)
+						.then(() => {
+							logAuditEvent(req, {
+								actor,
+								action: "patients.delete",
+								entityType: "patient",
+								entityId: patientId,
+								before: patientSnapshot,
+								after: null,
+							});
+
+							res.json({
+								id: patientId,
+								message: "Patient deleted",
+							});
+						})
+						.catch((err) => {
+							res.status(500).json({
+								error: "Could not delete patient",
+								details: err.message,
+							});
+						});
+				},
 			);
-
-			Promise.all(deleteRows)
-				.then(
-					() =>
-						new Promise((resolve, reject) => {
-							db.run(
-								`DELETE FROM patients WHERE patient_id = ?`,
-								[patientId],
-								(err) => {
-									if (err) {
-										reject(err);
-										return;
-									}
-
-									resolve(null);
-								},
-							);
-						}),
-				)
-				.then(() => {
-					res.json({
-						id: patientId,
-						message: "Patient deleted",
-					});
-				})
-				.catch((err) => {
-					res.status(500).json({
-						error: "Could not delete patient",
-						details: err.message,
-					});
-				});
 		},
 	);
 });
@@ -1583,6 +1888,11 @@ function checkDuplicatePatient(name, email, excludeId = null, callback) {
 }
 
 app.post("/patients", (req, res) => {
+	const actor = requirePermission(req, res, "patients:create");
+	if (!actor) {
+		return;
+	}
+
 	const {
 		fullName,
 		dob,
@@ -1701,6 +2011,20 @@ app.post("/patients", (req, res) => {
 								return;
 							}
 
+							logAuditEvent(req, {
+								actor,
+								action: "patients.create",
+								entityType: "patient",
+								entityId: nextId,
+								before: null,
+								after: {
+									patient_id: nextId,
+									name: String(fullName).trim(),
+									email: String(email).trim(),
+									phone: String(phone).trim(),
+								},
+							});
+
 							res.status(201).json({
 								id: nextId,
 								message: "Patient added",
@@ -1714,6 +2038,11 @@ app.post("/patients", (req, res) => {
 });
 
 app.put("/patients/:id", (req, res) => {
+	const actor = requirePermission(req, res, "patients:edit");
+	if (!actor) {
+		return;
+	}
+
 	const patientId = Number(req.params.id);
 
 	if (!Number.isInteger(patientId) || patientId <= 0) {
@@ -1730,6 +2059,7 @@ app.put("/patients/:id", (req, res) => {
 		heightCm,
 		weightKg,
 		bloodGroup,
+		enrollmentStatus,
 	} = req.body || {};
 
 	if (
@@ -1748,6 +2078,12 @@ app.put("/patients/:id", (req, res) => {
 
 	const parsedHeight = Number(heightCm);
 	const parsedWeight = Number(weightKg);
+	const normalizedStatus = normalizePatientStatus(enrollmentStatus);
+
+	if (enrollmentStatus && !normalizedStatus) {
+		res.status(400).json({ error: "Invalid enrollment status" });
+		return;
+	}
 
 	if (
 		!Number.isFinite(parsedHeight) ||
@@ -1778,29 +2114,55 @@ app.put("/patients/:id", (req, res) => {
 				return;
 			}
 
-			checkDuplicatePatient(
-				fullName,
-				String(email).trim(),
-				patientId,
-				(duplicate, err) => {
-					if (err) {
+			db.get(
+				`SELECT
+					patient_id,
+					name,
+					date_of_birth,
+					gender,
+					phone,
+					email,
+					height_cm,
+					weight_kg,
+					blood_group
+				FROM patients WHERE patient_id = ?`,
+				[patientId],
+				(snapshotErr, patientBeforeUpdate) => {
+					if (snapshotErr) {
 						res.status(500).json({
-							error: "Could not check for duplicate patients",
-							details: err.message,
+							error: "Could not load patient before update",
+							details: snapshotErr.message,
 						});
 						return;
 					}
 
-					if (duplicate && duplicate.duplicateFields.length > 0) {
-						const fields = duplicate.duplicateFields.join(" and ");
-						res.status(409).json({
-							error: "Duplicate patient detected",
-							details: `Another patient with the same ${fields} already exists`,
-						});
-						return;
-					}
+					checkDuplicatePatient(
+						fullName,
+						String(email).trim(),
+						patientId,
+						(duplicate, err) => {
+							if (err) {
+								res.status(500).json({
+									error: "Could not check for duplicate patients",
+									details: err.message,
+								});
+								return;
+							}
 
-					const updateSql = `
+							if (
+								duplicate &&
+								duplicate.duplicateFields.length > 0
+							) {
+								const fields =
+									duplicate.duplicateFields.join(" and ");
+								res.status(409).json({
+									error: "Duplicate patient detected",
+									details: `Another patient with the same ${fields} already exists`,
+								});
+								return;
+							}
+
+							const updateSql = `
 				UPDATE patients 
 				SET 
 					name = ?,
@@ -1814,80 +2176,130 @@ app.put("/patients/:id", (req, res) => {
 				WHERE patient_id = ?
 			`;
 
-					db.run("BEGIN TRANSACTION");
+							db.run("BEGIN TRANSACTION");
 
-					db.run(
-						updateSql,
-						[
-							String(fullName).trim(),
-							String(dob).trim(),
-							normalizeGender(gender),
-							String(phone).trim(),
-							String(email).trim(),
-							parsedHeight,
-							parsedWeight,
-							String(bloodGroup).trim().toUpperCase(),
-							patientId,
-						],
-						function updatePatient(err) {
-							if (err) {
-								db.run("ROLLBACK");
-								res.status(500).json({
-									error: "Could not update patient",
-									details: err.message,
-								});
-								return;
-							}
-
-							if (normalizedStatus) {
-								updatePatientStatus(
+							db.run(
+								updateSql,
+								[
+									String(fullName).trim(),
+									String(dob).trim(),
+									normalizeGender(gender),
+									String(phone).trim(),
+									String(email).trim(),
+									parsedHeight,
+									parsedWeight,
+									String(bloodGroup).trim().toUpperCase(),
 									patientId,
-									normalizedStatus,
-									(statusErr) => {
-										if (statusErr) {
+								],
+								function updatePatient(err) {
+									if (err) {
+										db.run("ROLLBACK");
+										res.status(500).json({
+											error: "Could not update patient",
+											details: err.message,
+										});
+										return;
+									}
+
+									if (normalizedStatus) {
+										updatePatientStatus(
+											patientId,
+											normalizedStatus,
+											(statusErr) => {
+												if (statusErr) {
+													db.run("ROLLBACK");
+													res.status(400).json({
+														error: "Could not update status",
+														details:
+															statusErr.message,
+													});
+													return;
+												}
+
+												db.run(
+													"COMMIT",
+													(commitErr) => {
+														if (commitErr) {
+															db.run("ROLLBACK");
+															res.status(
+																500,
+															).json({
+																error: "Could not save patient updates",
+																details:
+																	commitErr.message,
+															});
+															return;
+														}
+
+														logAuditEvent(req, {
+															actor,
+															action: "patients.update",
+															entityType:
+																"patient",
+															entityId: patientId,
+															before: patientBeforeUpdate,
+															after: {
+																patient_id:
+																	patientId,
+																name: String(
+																	fullName,
+																).trim(),
+																email: String(
+																	email,
+																).trim(),
+																phone: String(
+																	phone,
+																).trim(),
+																enrollment_status:
+																	normalizedStatus ||
+																	null,
+															},
+														});
+
+														res.json({
+															id: patientId,
+															message:
+																"Patient updated",
+														});
+													},
+												);
+											},
+										);
+										return;
+									}
+
+									db.run("COMMIT", (commitErr) => {
+										if (commitErr) {
 											db.run("ROLLBACK");
-											res.status(400).json({
-												error: "Could not update status",
-												details: statusErr.message,
+											res.status(500).json({
+												error: "Could not save patient updates",
+												details: commitErr.message,
 											});
 											return;
 										}
 
-										db.run("COMMIT", (commitErr) => {
-											if (commitErr) {
-												db.run("ROLLBACK");
-												res.status(500).json({
-													error: "Could not save patient updates",
-													details: commitErr.message,
-												});
-												return;
-											}
-
-											res.json({
-												id: patientId,
-												message: "Patient updated",
-											});
+										logAuditEvent(req, {
+											actor,
+											action: "patients.update",
+											entityType: "patient",
+											entityId: patientId,
+											before: patientBeforeUpdate,
+											after: {
+												patient_id: patientId,
+												name: String(fullName).trim(),
+												email: String(email).trim(),
+												phone: String(phone).trim(),
+												enrollment_status: null,
+											},
 										});
-									},
-								);
-								return;
-							}
 
-							db.run("COMMIT", (commitErr) => {
-								if (commitErr) {
-									db.run("ROLLBACK");
-									res.status(500).json({
-										error: "Could not save patient updates",
-										details: commitErr.message,
+										res.json({
+											id: patientId,
+											message: "Patient updated",
+										});
 									});
-									return;
-								}
-
-								res.json({
-									id: patientId,
-									message: "Patient updated",
-								});
-							});
+								},
+							);
 						},
 					);
 				},

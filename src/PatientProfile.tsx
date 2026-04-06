@@ -5,15 +5,23 @@ import PatientProfileEditView from "./features/patients/components/PatientProfil
 import PatientProfileDetailsView from "./features/patients/components/PatientProfileDetailsView";
 import AlertBanner from "./features/patients/components/AlertBanner";
 import usePatientProfile from "./features/patients/hooks/usePatientProfile";
+import { AuthUser, hasPermission } from "./auth";
 
 interface PatientProfileProps {
 	onLogout?: () => void;
+	currentUser: AuthUser | null;
 }
 
-export default function PatientProfile({ onLogout }: PatientProfileProps) {
+export default function PatientProfile({
+	onLogout,
+	currentUser,
+}: PatientProfileProps) {
 	const { id } = useParams<{ id: string }>();
 	const location = useLocation();
 	const isEditing = location.pathname.endsWith("/edit");
+	const canManagePatient = Boolean(
+		currentUser && hasPermission(currentUser.role, "patients:edit"),
+	);
 	const {
 		patient,
 		records,
@@ -31,7 +39,7 @@ export default function PatientProfile({ onLogout }: PatientProfileProps) {
 		handleScheduleAppointment,
 		handleDeletePatient,
 		goToEdit,
-	} = usePatientProfile(id);
+	} = usePatientProfile(id, canManagePatient);
 
 	return (
 		<main className="min-h-screen px-4 py-10 sm:px-6 lg:px-8">
@@ -71,6 +79,7 @@ export default function PatientProfile({ onLogout }: PatientProfileProps) {
 								records={records}
 								isArchived={isArchived}
 								isDeleting={isDeleting}
+								canManagePatient={canManagePatient}
 								canUseClinicalActions={canUseClinicalActions}
 								updateMessage={updateMessage}
 								updateError={updateError}

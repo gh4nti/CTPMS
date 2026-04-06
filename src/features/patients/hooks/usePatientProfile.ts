@@ -37,6 +37,7 @@ interface UsePatientProfileResult {
 
 export default function usePatientProfile(
 	patientId: string | undefined,
+	canManagePatient: boolean,
 ): UsePatientProfileResult {
 	const navigate = useNavigate();
 	const [patient, setPatient] = useState<Patient | null>(null);
@@ -107,6 +108,13 @@ export default function usePatientProfile(
 	}, [patientId]);
 
 	function goToEdit() {
+		if (!canManagePatient) {
+			setUpdateError(
+				"You do not have permission to edit patient records.",
+			);
+			return;
+		}
+
 		if (!patientId) {
 			return;
 		}
@@ -121,6 +129,11 @@ export default function usePatientProfile(
 	}
 
 	function handleToggleArchive() {
+		if (!canManagePatient) {
+			setUpdateError("You do not have permission to archive patients.");
+			return;
+		}
+
 		if (!patientId) {
 			return;
 		}
@@ -148,6 +161,11 @@ export default function usePatientProfile(
 	}
 
 	async function handleDeletePatient() {
+		if (!canManagePatient) {
+			setUpdateError("You do not have permission to delete patients.");
+			return;
+		}
+
 		if (!patient || !patientId) {
 			return;
 		}
@@ -187,6 +205,13 @@ export default function usePatientProfile(
 	}
 
 	async function handleFormSubmit(data: FormState) {
+		if (!canManagePatient) {
+			setUpdateError(
+				"You do not have permission to update patient records.",
+			);
+			return;
+		}
+
 		setUpdateError("");
 		setUpdateMessage("Updating patient...");
 

@@ -4,12 +4,14 @@ import { getInvoiceDetail, createPayment, updateInvoiceStatus } from "../api";
 
 interface InvoiceDetailProps {
 	invoiceId: number;
+	canManageBilling: boolean;
 	onClose: () => void;
 	onInvoiceUpdated: () => void;
 }
 
 export function InvoiceDetailView({
 	invoiceId,
+	canManageBilling,
 	onClose,
 	onInvoiceUpdated,
 }: InvoiceDetailProps) {
@@ -52,6 +54,11 @@ export function InvoiceDetailView({
 			return;
 		}
 
+		if (!canManageBilling) {
+			setError("You do not have permission to record payments.");
+			return;
+		}
+
 		const amount = Number(paymentAmount);
 		if (isNaN(amount) || amount <= 0) {
 			setError("Invalid payment amount");
@@ -90,7 +97,7 @@ export function InvoiceDetailView({
 	const downloadReceipt = () => {
 		if (!invoice) return;
 
-		const receiptContent = `
+		let receiptContent = `
 PAYMENT RECEIPT
 =====================================
 
@@ -428,7 +435,7 @@ Generated: ${new Date().toLocaleString()}
 					</div>
 				)}
 
-				{!isPaid && (
+				{!isPaid && canManageBilling && (
 					<form
 						onSubmit={handleRecordPayment}
 						className="mb-6 p-4 bg-blue-50 rounded"

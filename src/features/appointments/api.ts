@@ -4,6 +4,7 @@ import {
 	AppointmentFormState,
 	AppointmentRangeResponse,
 } from "./types";
+import { fetchWithAuth } from "../../auth";
 
 interface ApiErrorBody {
 	error?: string;
@@ -31,7 +32,7 @@ async function buildApiError(response: Response): Promise<ApiError> {
 }
 
 export async function fetchPatients(): Promise<Patient[]> {
-	const response = await fetch("/api/patients");
+	const response = await fetchWithAuth("/api/patients");
 	if (!response.ok) {
 		throw await buildApiError(response);
 	}
@@ -47,7 +48,7 @@ export async function fetchAppointments(params: {
 		from: params.from,
 		to: params.to,
 	});
-	const response = await fetch(
+	const response = await fetchWithAuth(
 		`/api/appointments?${searchParams.toString()}`,
 	);
 	if (!response.ok) {
@@ -61,7 +62,7 @@ export async function fetchAppointments(params: {
 export async function createAppointment(
 	payload: AppointmentFormState,
 ): Promise<number> {
-	const response = await fetch("/api/appointments", {
+	const response = await fetchWithAuth("/api/appointments", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(payload),
@@ -79,7 +80,7 @@ export async function updateAppointment(
 	id: number,
 	payload: AppointmentFormState,
 ): Promise<void> {
-	const response = await fetch(`/api/appointments/${id}`, {
+	const response = await fetchWithAuth(`/api/appointments/${id}`, {
 		method: "PUT",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(payload),
@@ -91,7 +92,7 @@ export async function updateAppointment(
 }
 
 export async function cancelAppointment(id: number): Promise<void> {
-	const response = await fetch(`/api/appointments/${id}/cancel`, {
+	const response = await fetchWithAuth(`/api/appointments/${id}/cancel`, {
 		method: "PATCH",
 	});
 

@@ -30,6 +30,12 @@ export default function Login({
 				</div>
 
 				<form onSubmit={handleSubmit} className="space-y-6">
+					<div className="rounded-lg border border-indigo-100 bg-indigo-50 px-4 py-3 text-left text-xs text-indigo-800">
+						<p className="font-semibold">Demo credentials</p>
+						<p>Admin: username admin, password 123</p>
+						<p>Guest: username guest, password 123</p>
+					</div>
+
 					<div>
 						<label
 							htmlFor="username"

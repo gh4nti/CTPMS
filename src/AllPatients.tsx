@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { AuthUser, fetchWithAuth } from "./auth";
 
 type EnrollmentStatus =
 	| "screening"
@@ -259,7 +260,13 @@ function matchesFieldTerm(
 
 type AgeFilter = "all" | "under18" | "18to40" | "41to60" | "61plus";
 
-export default function AllPatients({ onLogout }: { onLogout?: () => void }) {
+export default function AllPatients({
+	onLogout,
+	currentUser,
+}: {
+	onLogout?: () => void;
+	currentUser: AuthUser | null;
+}) {
 	const [patients, setPatients] = useState<Patient[]>([]);
 	const [error, setError] = useState("");
 	const [searchQuery, setSearchQuery] = useState("");
@@ -270,7 +277,11 @@ export default function AllPatients({ onLogout }: { onLogout?: () => void }) {
 	useEffect(() => {
 		async function loadPatients() {
 			try {
-				const res = await fetch("/api/patients");
+				const res = await fetchWithAuth(
+					"/api/patients",
+					{},
+					currentUser,
+				);
 				if (!res.ok) {
 					throw new Error("Request failed");
 				}
@@ -283,7 +294,7 @@ export default function AllPatients({ onLogout }: { onLogout?: () => void }) {
 		}
 
 		void loadPatients();
-	}, []);
+	}, [currentUser]);
 
 	const statusOptions = useMemo(() => {
 		const values = new Set(

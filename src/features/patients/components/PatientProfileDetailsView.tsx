@@ -14,6 +14,7 @@ interface PatientProfileDetailsViewProps {
 	records: ClinicalRecords;
 	isArchived: boolean;
 	isDeleting: boolean;
+	canManagePatient: boolean;
 	canUseClinicalActions: boolean;
 	updateMessage: string;
 	updateError: string;
@@ -29,6 +30,7 @@ export default function PatientProfileDetailsView({
 	records,
 	isArchived,
 	isDeleting,
+	canManagePatient,
 	canUseClinicalActions,
 	updateMessage,
 	updateError,
@@ -50,6 +52,7 @@ export default function PatientProfileDetailsView({
 				<QuickActionsCard
 					isArchived={isArchived}
 					isDeleting={isDeleting}
+					canManagePatient={canManagePatient}
 					canUseClinicalActions={canUseClinicalActions}
 					onEdit={onEdit}
 					onToggleArchive={onToggleArchive}

@@ -7,43 +7,21 @@ import AllPatients from "./AllPatients";
 import PatientProfile from "./PatientProfile";
 import { Billing } from "./features/billing";
 import ProtectedRoute from "./ProtectedRoute";
+import {
+	AuthUser,
+	clearAuthSession,
+	persistAuthSession,
+	readAuthSession,
+} from "./auth";
 import "./index.css";
 
-const AUTH_EXPIRY_KEY = "ctpms_auth_expires_at";
-const AUTH_DURATION_MS = 15 * 60 * 1000;
-
-function readAuthFromStorage(): boolean {
-	const rawExpiry = localStorage.getItem(AUTH_EXPIRY_KEY);
-	if (!rawExpiry) {
-		return false;
-	}
-
-	const expiryTime = Number(rawExpiry);
-	if (!Number.isFinite(expiryTime) || Date.now() >= expiryTime) {
-		localStorage.removeItem(AUTH_EXPIRY_KEY);
-		return false;
-	}
-
-	return true;
-}
-
-function storeAuthExpiry() {
-	localStorage.setItem(
-		AUTH_EXPIRY_KEY,
-		String(Date.now() + AUTH_DURATION_MS),
-	);
-}
-
-function clearAuthExpiry() {
-	localStorage.removeItem(AUTH_EXPIRY_KEY);
-}
-
 function AppWrapper() {
-	const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() =>
-		readAuthFromStorage(),
+	const [authUser, setAuthUser] = useState<AuthUser | null>(() =>
+		readAuthSession(),
 	);
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState("");
+	const isAuthenticated = Boolean(authUser);
 
 	useEffect(() => {
 		if (!isAuthenticated) {
@@ -51,8 +29,8 @@ function AppWrapper() {
 		}
 
 		const timer = window.setInterval(() => {
-			if (!readAuthFromStorage()) {
-				setIsAuthenticated(false);
+			if (!readAuthSession()) {
+				setAuthUser(null);
 			}
 		}, 30_000);
 
@@ -68,10 +46,18 @@ function AppWrapper() {
 		// Simulate network delay
 		await new Promise((resolve) => setTimeout(resolve, 300));
 
-		// Check credentials: only admin / 123
-		if (username === "admin" && password === "123") {
-			storeAuthExpiry();
-			setIsAuthenticated(true);
+		const normalizedUsername = username.trim().toLowerCase();
+
+		let nextUser: AuthUser | null = null;
+		if (normalizedUsername === "admin" && password === "123") {
+			nextUser = { username: "admin", role: "admin" };
+		} else if (normalizedUsername === "guest" && password === "123") {
+			nextUser = { username: "guest", role: "guest" };
+		}
+
+		if (nextUser) {
+			persistAuthSession(nextUser);
+			setAuthUser(nextUser);
 		} else {
 			setError("Invalid username or password");
 		}
@@ -80,8 +66,8 @@ function AppWrapper() {
 	};
 
 	const handleLogout = () => {
-		clearAuthExpiry();
-		setIsAuthenticated(false);
+		clearAuthSession();
+		setAuthUser(null);
 	};
 
 	return (
@@ -92,11 +78,15 @@ function AppWrapper() {
 					element={
 						<ProtectedRoute
 							isAuthenticated={isAuthenticated}
+							authUser={authUser}
 							onLogin={handleLogin}
 							isLoading={isLoading}
 							error={error}
 						>
-							<App onLogout={handleLogout} />
+							<App
+								onLogout={handleLogout}
+								currentUser={authUser}
+							/>
 						</ProtectedRoute>
 					}
 				/>
@@ -105,11 +95,15 @@ function AppWrapper() {
 					element={
 						<ProtectedRoute
 							isAuthenticated={isAuthenticated}
+							authUser={authUser}
 							onLogin={handleLogin}
 							isLoading={isLoading}
 							error={error}
 						>
-							<PatientProfile onLogout={handleLogout} />
+							<PatientProfile
+								onLogout={handleLogout}
+								currentUser={authUser}
+							/>
 						</ProtectedRoute>
 					}
 				/>
@@ -118,11 +112,16 @@ function AppWrapper() {
 					element={
 						<ProtectedRoute
 							isAuthenticated={isAuthenticated}
+							authUser={authUser}
+							requiredPermission="patients:edit"
 							onLogin={handleLogin}
 							isLoading={isLoading}
 							error={error}
 						>
-							<PatientProfile onLogout={handleLogout} />
+							<PatientProfile
+								onLogout={handleLogout}
+								currentUser={authUser}
+							/>
 						</ProtectedRoute>
 					}
 				/>
@@ -131,11 +130,15 @@ function AppWrapper() {
 					element={
 						<ProtectedRoute
 							isAuthenticated={isAuthenticated}
+							authUser={authUser}
 							onLogin={handleLogin}
 							isLoading={isLoading}
 							error={error}
 						>
-							<AllPatients onLogout={handleLogout} />
+							<AllPatients
+								onLogout={handleLogout}
+								currentUser={authUser}
+							/>
 						</ProtectedRoute>
 					}
 				/>
@@ -144,11 +147,12 @@ function AppWrapper() {
 					element={
 						<ProtectedRoute
 							isAuthenticated={isAuthenticated}
+							authUser={authUser}
 							onLogin={handleLogin}
 							isLoading={isLoading}
 							error={error}
 						>
-							<Appointments />
+							<Appointments currentUser={authUser} />
 						</ProtectedRoute>
 					}
 				/>
@@ -157,11 +161,12 @@ function AppWrapper() {
 					element={
 						<ProtectedRoute
 							isAuthenticated={isAuthenticated}
+							authUser={authUser}
 							onLogin={handleLogin}
 							isLoading={isLoading}
 							error={error}
 						>
-							<Billing />
+							<Billing currentUser={authUser} />
 						</ProtectedRoute>
 					}
 				/>

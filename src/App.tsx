@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import PatientForm, { FormState } from "./PatientForm";
+import { AuthUser, fetchWithAuth, hasPermission } from "./auth";
 
 type EnrollmentStatus =
 	| "screening"
@@ -49,12 +50,16 @@ function prettyStatus(rawStatus: string): string {
 
 interface AppProps {
 	onLogout?: () => void;
+	currentUser: AuthUser | null;
 }
 
-export default function App({ onLogout }: AppProps) {
+export default function App({ onLogout, currentUser }: AppProps) {
 	const [patients, setPatients] = useState<Patient[]>([]);
 	const [message, setMessage] = useState("");
 	const [isError, setIsError] = useState(false);
+	const canCreatePatients = Boolean(
+		currentUser && hasPermission(currentUser.role, "patients:create"),
+	);
 
 	const countLabel = useMemo(() => {
 		return `${patients.length} ${patients.length === 1 ? "patient" : "patients"}`;
@@ -62,7 +67,7 @@ export default function App({ onLogout }: AppProps) {
 
 	async function loadPatients() {
 		try {
-			const res = await fetch("/api/patients");
+			const res = await fetchWithAuth("/api/patients", {}, currentUser);
 			if (!res.ok) {
 				throw new Error("Request failed");
 			}
@@ -80,6 +85,12 @@ export default function App({ onLogout }: AppProps) {
 	}, []);
 
 	async function handleSubmitForm(data: FormState) {
+		if (!canCreatePatients) {
+			setIsError(true);
+			setMessage("You do not have permission to add patients.");
+			return;
+		}
+
 		setIsError(false);
 		setMessage("Saving patient record...");
 
@@ -95,11 +106,15 @@ export default function App({ onLogout }: AppProps) {
 				bloodGroup: data.bloodGroup.trim(),
 			};
 
-			const response = await fetch("/api/patients", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(payload),
-			});
+			const response = await fetchWithAuth(
+				"/api/patients",
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(payload),
+				},
+				currentUser,
+			);
 
 			if (!response.ok) {
 				const errorBody = (await response
@@ -243,7 +258,17 @@ export default function App({ onLogout }: AppProps) {
 						</div>
 					)}
 
-					<PatientForm mode="create" onSubmit={handleSubmitForm} />
+					{canCreatePatients ? (
+						<PatientForm
+							mode="create"
+							onSubmit={handleSubmitForm}
+						/>
+					) : (
+						<div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+							Read-only access: guest users cannot enroll
+							patients.
+						</div>
+					)}
 				</section>
 
 				<section className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-xl shadow-slate-200/70 backdrop-blur sm:p-8">

@@ -14,6 +14,7 @@ import {
 	AppointmentFormState,
 	AppointmentStatus,
 } from "./features/appointments/types";
+import { AuthUser, hasPermission } from "./auth";
 
 type CalendarMode = "daily" | "weekly";
 
@@ -130,6 +131,7 @@ interface AppointmentCardProps {
 	appointment: Appointment;
 	onEdit: (appointment: Appointment) => void;
 	onCancel: (appointment: Appointment) => void;
+	canManageActions: boolean;
 	compact?: boolean;
 }
 
@@ -137,6 +139,7 @@ function AppointmentCard({
 	appointment,
 	onEdit,
 	onCancel,
+	canManageActions,
 	compact = false,
 }: AppointmentCardProps) {
 	return (
@@ -212,26 +215,28 @@ function AppointmentCard({
 				</p>
 			)}
 
-			<div
-				className={`mt-4 flex gap-2 ${compact ? "flex-col" : "flex-wrap"}`}
-			>
-				<button
-					type="button"
-					onClick={() => onEdit(appointment)}
-					className={`rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-100 transition hover:border-teal-400 hover:bg-slate-800 ${compact ? "w-full" : ""}`}
+			{canManageActions && (
+				<div
+					className={`mt-4 flex gap-2 ${compact ? "flex-col" : "flex-wrap"}`}
 				>
-					Reschedule
-				</button>
-				{appointment.status !== "cancelled" && (
 					<button
 						type="button"
-						onClick={() => onCancel(appointment)}
-						className={`rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/20 ${compact ? "w-full" : ""}`}
+						onClick={() => onEdit(appointment)}
+						className={`rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-100 transition hover:border-teal-400 hover:bg-slate-800 ${compact ? "w-full" : ""}`}
 					>
-						Cancel
+						Reschedule
 					</button>
-				)}
-			</div>
+					{appointment.status !== "cancelled" && (
+						<button
+							type="button"
+							onClick={() => onCancel(appointment)}
+							className={`rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/20 ${compact ? "w-full" : ""}`}
+						>
+							Cancel
+						</button>
+					)}
+				</div>
+			)}
 		</div>
 	);
 }
@@ -240,7 +245,11 @@ function appointmentSort(a: Appointment, b: Appointment): number {
 	return a.start_time.localeCompare(b.start_time);
 }
 
-export default function Appointments() {
+export default function Appointments({
+	currentUser,
+}: {
+	currentUser: AuthUser | null;
+}) {
 	const [searchParams] = useSearchParams();
 	const initialPatientId = searchParams.get("patientId") || "";
 	const [patients, setPatients] = useState<Patient[]>([]);
@@ -257,6 +266,9 @@ export default function Appointments() {
 	const [isSaving, setIsSaving] = useState(false);
 	const [message, setMessage] = useState("");
 	const [isError, setIsError] = useState(false);
+	const canManageAppointments = Boolean(
+		currentUser && hasPermission(currentUser.role, "appointments:write"),
+	);
 
 	const selectedDateObject = useMemo(
 		() => parseDateInput(selectedDate) || new Date(),
@@ -345,6 +357,12 @@ export default function Appointments() {
 	}, [activeMode, range.start.getTime(), range.end.getTime()]);
 
 	function startEditingAppointment(appointment: Appointment) {
+		if (!canManageAppointments) {
+			setIsError(true);
+			setMessage("You do not have permission to edit appointments.");
+			return;
+		}
+
 		setEditingAppointmentId(appointment.id);
 		setFormState({
 			patientId: String(appointment.patient_id),
@@ -367,6 +385,13 @@ export default function Appointments() {
 
 	async function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
+
+		if (!canManageAppointments) {
+			setIsError(true);
+			setMessage("You do not have permission to update appointments.");
+			return;
+		}
+
 		setIsSaving(true);
 		setIsError(false);
 		setMessage(
@@ -426,6 +451,12 @@ export default function Appointments() {
 	}
 
 	async function handleCancelAppointment(appointment: Appointment) {
+		if (!canManageAppointments) {
+			setIsError(true);
+			setMessage("You do not have permission to cancel appointments.");
+			return;
+		}
+
 		const confirmed = window.confirm(
 			`Cancel the appointment for ${appointment.patient_name}?`,
 		);
@@ -534,6 +565,13 @@ export default function Appointments() {
 					</div>
 				)}
 
+				{!canManageAppointments && (
+					<div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 shadow-lg">
+						Read-only access: guest users can view appointments but
+						cannot modify them.
+					</div>
+				)}
+
 				<div className="grid grid-cols-1 gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
 					<section className="rounded-[32px] border border-slate-700/80 bg-slate-950/80 p-6 shadow-2xl shadow-slate-950/20 backdrop-blur xl:sticky xl:top-6 xl:self-start">
 						<div className="flex items-start justify-between gap-4">
@@ -562,148 +600,158 @@ export default function Appointments() {
 							className="mt-6 space-y-4"
 							onSubmit={handleSubmit}
 						>
-							<div className="space-y-2">
-								<label className="block text-sm font-medium text-slate-300">
-									Patient
-								</label>
-								<select
-									value={formState.patientId}
-									onChange={(event) =>
-										setFormState((current) => ({
-											...current,
-											patientId: event.target.value,
-										}))
-									}
-									className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-4 py-3 text-sm text-slate-100 outline-none ring-0 transition focus:border-teal-400"
-								>
-									<option value="">Choose a patient</option>
-									{patients.map((patient) => (
-										<option
-											key={patient.id}
-											value={patient.id}
-										>
-											{patient.full_name}
-										</option>
-									))}
-								</select>
-							</div>
-
-							<div className="space-y-2">
-								<label className="block text-sm font-medium text-slate-300">
-									Title
-								</label>
-								<input
-									type="text"
-									value={formState.title}
-									onChange={(event) =>
-										setFormState((current) => ({
-											...current,
-											title: event.target.value,
-										}))
-									}
-									className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-4 py-3 text-sm text-slate-100 outline-none ring-0 transition focus:border-teal-400"
-								/>
-							</div>
-
-							<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+							<fieldset disabled={!canManageAppointments}>
 								<div className="space-y-2">
 									<label className="block text-sm font-medium text-slate-300">
-										Start
+										Patient
 									</label>
-									<input
-										type="datetime-local"
-										value={formState.startTime}
-										onChange={(event) =>
-											setFormState((current) => {
-												const nextStartTime =
-													event.target.value;
-												return {
-													...current,
-													startTime: nextStartTime,
-													endTime: isEndBeforeStart(
-														nextStartTime,
-														current.endTime,
-													)
-														? nextStartTime
-														: current.endTime,
-												};
-											})
-										}
-										className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-4 py-3 text-sm text-slate-100 outline-none ring-0 transition focus:border-teal-400"
-									/>
-								</div>
-								<div className="space-y-2">
-									<label className="block text-sm font-medium text-slate-300">
-										End
-									</label>
-									<input
-										type="datetime-local"
-										min={formState.startTime}
-										value={formState.endTime}
+									<select
+										value={formState.patientId}
 										onChange={(event) =>
 											setFormState((current) => ({
 												...current,
-												endTime: event.target.value,
+												patientId: event.target.value,
+											}))
+										}
+										className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-4 py-3 text-sm text-slate-100 outline-none ring-0 transition focus:border-teal-400"
+									>
+										<option value="">
+											Choose a patient
+										</option>
+										{patients.map((patient) => (
+											<option
+												key={patient.id}
+												value={patient.id}
+											>
+												{patient.full_name}
+											</option>
+										))}
+									</select>
+								</div>
+
+								<div className="space-y-2">
+									<label className="block text-sm font-medium text-slate-300">
+										Title
+									</label>
+									<input
+										type="text"
+										value={formState.title}
+										onChange={(event) =>
+											setFormState((current) => ({
+												...current,
+												title: event.target.value,
 											}))
 										}
 										className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-4 py-3 text-sm text-slate-100 outline-none ring-0 transition focus:border-teal-400"
 									/>
 								</div>
-							</div>
 
-							{hasInvalidRange && (
-								<p className="text-sm text-rose-200">
-									End time must be after start time.
-								</p>
-							)}
+								<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+									<div className="space-y-2">
+										<label className="block text-sm font-medium text-slate-300">
+											Start
+										</label>
+										<input
+											type="datetime-local"
+											value={formState.startTime}
+											onChange={(event) =>
+												setFormState((current) => {
+													const nextStartTime =
+														event.target.value;
+													return {
+														...current,
+														startTime:
+															nextStartTime,
+														endTime:
+															isEndBeforeStart(
+																nextStartTime,
+																current.endTime,
+															)
+																? nextStartTime
+																: current.endTime,
+													};
+												})
+											}
+											className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-4 py-3 text-sm text-slate-100 outline-none ring-0 transition focus:border-teal-400"
+										/>
+									</div>
+									<div className="space-y-2">
+										<label className="block text-sm font-medium text-slate-300">
+											End
+										</label>
+										<input
+											type="datetime-local"
+											min={formState.startTime}
+											value={formState.endTime}
+											onChange={(event) =>
+												setFormState((current) => ({
+													...current,
+													endTime: event.target.value,
+												}))
+											}
+											className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-4 py-3 text-sm text-slate-100 outline-none ring-0 transition focus:border-teal-400"
+										/>
+									</div>
+								</div>
 
-							<div className="space-y-2">
-								<label className="block text-sm font-medium text-slate-300">
-									Location
-								</label>
-								<input
-									type="text"
-									value={formState.location}
-									onChange={(event) =>
-										setFormState((current) => ({
-											...current,
-											location: event.target.value,
-										}))
+								{hasInvalidRange && (
+									<p className="text-sm text-rose-200">
+										End time must be after start time.
+									</p>
+								)}
+
+								<div className="space-y-2">
+									<label className="block text-sm font-medium text-slate-300">
+										Location
+									</label>
+									<input
+										type="text"
+										value={formState.location}
+										onChange={(event) =>
+											setFormState((current) => ({
+												...current,
+												location: event.target.value,
+											}))
+										}
+										className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-4 py-3 text-sm text-slate-100 outline-none ring-0 transition focus:border-teal-400"
+									/>
+								</div>
+
+								<div className="space-y-2">
+									<label className="block text-sm font-medium text-slate-300">
+										Notes
+									</label>
+									<textarea
+										value={formState.notes}
+										onChange={(event) =>
+											setFormState((current) => ({
+												...current,
+												notes: event.target.value,
+											}))
+										}
+										rows={4}
+										className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-4 py-3 text-sm text-slate-100 outline-none ring-0 transition focus:border-teal-400"
+									/>
+								</div>
+
+								<button
+									type="submit"
+									disabled={
+										isSaving ||
+										hasInvalidRange ||
+										!canManageAppointments
 									}
-									className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-4 py-3 text-sm text-slate-100 outline-none ring-0 transition focus:border-teal-400"
-								/>
-							</div>
-
-							<div className="space-y-2">
-								<label className="block text-sm font-medium text-slate-300">
-									Notes
-								</label>
-								<textarea
-									value={formState.notes}
-									onChange={(event) =>
-										setFormState((current) => ({
-											...current,
-											notes: event.target.value,
-										}))
-									}
-									rows={4}
-									className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-4 py-3 text-sm text-slate-100 outline-none ring-0 transition focus:border-teal-400"
-								/>
-							</div>
-
-							<button
-								type="submit"
-								disabled={isSaving || hasInvalidRange}
-								className="w-full rounded-2xl bg-teal-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-teal-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-							>
-								{isSaving
-									? editingAppointmentId
-										? "Rescheduling..."
-										: "Booking..."
-									: editingAppointmentId
-										? "Save reschedule"
-										: "Book appointment"}
-							</button>
+									className="w-full rounded-2xl bg-teal-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-teal-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+								>
+									{isSaving
+										? editingAppointmentId
+											? "Rescheduling..."
+											: "Booking..."
+										: editingAppointmentId
+											? "Save reschedule"
+											: "Book appointment"}
+								</button>
+							</fieldset>
 						</form>
 
 						<div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-4 text-sm text-slate-300">
@@ -778,6 +826,9 @@ export default function Appointments() {
 											appointment={appointment}
 											onEdit={startEditingAppointment}
 											onCancel={handleCancelAppointment}
+											canManageActions={
+												canManageAppointments
+											}
 											compact
 										/>
 									))
@@ -845,6 +896,9 @@ export default function Appointments() {
 															}
 															onCancel={
 																handleCancelAppointment
+															}
+															canManageActions={
+																canManageAppointments
 															}
 															compact
 														/>
