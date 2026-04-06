@@ -39,6 +39,56 @@ db.serialize(() => {
 	db.run(
 		`CREATE INDEX IF NOT EXISTS idx_appointments_start_time ON appointments(start_time)`,
 	);
+	db.run(`
+		CREATE TABLE IF NOT EXISTS invoices (
+			invoice_id INTEGER PRIMARY KEY AUTOINCREMENT,
+			patient_id INTEGER NOT NULL,
+			invoice_number TEXT UNIQUE NOT NULL,
+			invoice_date TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			due_date TEXT NOT NULL,
+			amount REAL NOT NULL,
+			description TEXT NOT NULL DEFAULT 'Clinical Treatment Services',
+			status TEXT NOT NULL DEFAULT 'pending',
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
+		)
+	`);
+	db.run(
+		`CREATE INDEX IF NOT EXISTS idx_invoices_patient_id ON invoices(patient_id)`,
+	);
+	db.run(
+		`CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status)`,
+	);
+	db.run(
+		`CREATE INDEX IF NOT EXISTS idx_invoices_invoice_date ON invoices(invoice_date)`,
+	);
+	db.run(`
+		CREATE TABLE IF NOT EXISTS payments (
+			payment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+			invoice_id INTEGER NOT NULL,
+			patient_id INTEGER NOT NULL,
+			amount REAL NOT NULL,
+			payment_date TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			payment_method TEXT NOT NULL DEFAULT 'credit_card',
+			status TEXT NOT NULL DEFAULT 'pending',
+			reference_number TEXT,
+			notes TEXT,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (invoice_id) REFERENCES invoices(invoice_id),
+			FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
+		)
+	`);
+	db.run(
+		`CREATE INDEX IF NOT EXISTS idx_payments_invoice_id ON payments(invoice_id)`,
+	);
+	db.run(
+		`CREATE INDEX IF NOT EXISTS idx_payments_patient_id ON payments(patient_id)`,
+	);
+	db.run(
+		`CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)`,
+	);
 });
 
 function normalizeGender(inputGender) {
@@ -95,6 +145,47 @@ function normalizeAppointmentStatus(inputStatus) {
 	}
 
 	return null;
+}
+
+function normalizeInvoiceStatus(inputStatus) {
+	const normalized = String(inputStatus || "")
+		.trim()
+		.toLowerCase();
+
+	if (
+		normalized === "pending" ||
+		normalized === "paid" ||
+		normalized === "overdue" ||
+		normalized === "cancelled"
+	) {
+		return normalized;
+	}
+
+	return null;
+}
+
+function normalizePaymentStatus(inputStatus) {
+	const normalized = String(inputStatus || "")
+		.trim()
+		.toLowerCase();
+
+	if (
+		normalized === "pending" ||
+		normalized === "completed" ||
+		normalized === "failed"
+	) {
+		return normalized;
+	}
+
+	return null;
+}
+
+function generateInvoiceNumber() {
+	const timestamp = Date.now().toString(36).toUpperCase();
+	const randomNum = Math.floor(Math.random() * 10000)
+		.toString(36)
+		.toUpperCase();
+	return `INV-${timestamp}-${randomNum}`;
 }
 
 function parseIsoDateTime(inputValue) {
@@ -874,6 +965,480 @@ app.patch("/appointments/:id/cancel", (req, res) => {
 	);
 });
 
+// Billing and Payments Routes
+
+app.get("/invoices", (req, res) => {
+	const patientId = req.query.patientId ? Number(req.query.patientId) : null;
+	const status = req.query.status
+		? String(req.query.status).toLowerCase()
+		: null;
+
+	let sql = `
+		SELECT
+			i.invoice_id AS id,
+			i.patient_id,
+			p.name AS patient_name,
+			i.invoice_number,
+			i.invoice_date,
+			i.due_date,
+			i.amount,
+			i.description,
+			i.status,
+			COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = i.invoice_id AND status = 'completed'), 0) AS paid_amount,
+			i.created_at,
+			i.updated_at
+		FROM invoices i
+		INNER JOIN patients p ON p.patient_id = i.patient_id
+		WHERE 1=1
+	`;
+
+	const params = [];
+
+	if (Number.isInteger(patientId) && patientId > 0) {
+		sql += ` AND i.patient_id = ?`;
+		params.push(patientId);
+	}
+
+	if (status && normalizeInvoiceStatus(status)) {
+		sql += ` AND LOWER(i.status) = ?`;
+		params.push(status);
+	}
+
+	sql += ` ORDER BY i.invoice_date DESC, i.invoice_id DESC`;
+
+	db.all(sql, params, (err, rows) => {
+		if (err) {
+			res.status(500).json({
+				error: "Could not fetch invoices",
+				details: err.message,
+			});
+			return;
+		}
+
+		res.json({ invoices: rows || [] });
+	});
+});
+
+app.get("/invoices/:id", (req, res) => {
+	const invoiceId = Number(req.params.id);
+
+	if (!Number.isInteger(invoiceId) || invoiceId <= 0) {
+		res.status(400).json({ error: "Invalid invoice ID" });
+		return;
+	}
+
+	db.get(
+		`SELECT
+			i.invoice_id AS id,
+			i.patient_id,
+			p.name AS patient_name,
+			p.email AS patient_email,
+			p.phone AS patient_phone,
+			i.invoice_number,
+			i.invoice_date,
+			i.due_date,
+			i.amount,
+			i.description,
+			i.status,
+			COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = i.invoice_id AND status = 'completed'), 0) AS paid_amount,
+			i.created_at,
+			i.updated_at
+		FROM invoices i
+		INNER JOIN patients p ON p.patient_id = i.patient_id
+		WHERE i.invoice_id = ?`,
+		[invoiceId],
+		(err, row) => {
+			if (err) {
+				res.status(500).json({
+					error: "Could not fetch invoice",
+					details: err.message,
+				});
+				return;
+			}
+
+			if (!row) {
+				res.status(404).json({ error: "Invoice not found" });
+				return;
+			}
+
+			db.all(
+				`SELECT * FROM payments WHERE invoice_id = ? ORDER BY payment_date DESC`,
+				[invoiceId],
+				(paymentErr, payments) => {
+					if (paymentErr) {
+						res.status(500).json({
+							error: "Could not fetch payments",
+							details: paymentErr.message,
+						});
+						return;
+					}
+
+					res.json({
+						...row,
+						payments: payments || [],
+					});
+				},
+			);
+		},
+	);
+});
+
+app.post("/invoices", (req, res) => {
+	const { patientId, amount, description, dueDate } = req.body || {};
+	const parsedPatientId = Number(patientId);
+	const parsedAmount = Number(amount);
+	const normalizedDescription = String(description || "")
+		.trim()
+		.substring(0, 500);
+	const parsedDueDate = parseIsoDateTime(dueDate);
+
+	if (!Number.isInteger(parsedPatientId) || parsedPatientId <= 0) {
+		res.status(400).json({ error: "Invalid patient ID" });
+		return;
+	}
+
+	if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+		res.status(400).json({ error: "Amount must be a positive number" });
+		return;
+	}
+
+	if (!parsedDueDate) {
+		res.status(400).json({ error: "Invalid due date" });
+		return;
+	}
+
+	db.get(
+		`SELECT patient_id FROM patients WHERE patient_id = ?`,
+		[parsedPatientId],
+		(patientErr, patientRow) => {
+			if (patientErr) {
+				res.status(500).json({
+					error: "Could not verify patient exists",
+					details: patientErr.message,
+				});
+				return;
+			}
+
+			if (!patientRow) {
+				res.status(404).json({ error: "Patient not found" });
+				return;
+			}
+
+			const invoiceNumber = generateInvoiceNumber();
+
+			db.run(
+				`INSERT INTO invoices (
+					patient_id,
+					invoice_number,
+					amount,
+					description,
+					due_date,
+					status,
+					created_at,
+					updated_at
+				) VALUES (?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+				[
+					parsedPatientId,
+					invoiceNumber,
+					parsedAmount,
+					normalizedDescription || "Clinical Treatment Services",
+					parsedDueDate.toISOString(),
+				],
+				function insertInvoice(insertErr) {
+					if (insertErr) {
+						res.status(500).json({
+							error: "Could not create invoice",
+							details: insertErr.message,
+						});
+						return;
+					}
+
+					res.status(201).json({
+						id: this.lastID,
+						invoice_number: invoiceNumber,
+						message: "Invoice created",
+					});
+				},
+			);
+		},
+	);
+});
+
+app.patch("/invoices/:id/status", (req, res) => {
+	const invoiceId = Number(req.params.id);
+	const { status } = req.body || {};
+	const normalizedStatus = normalizeInvoiceStatus(status);
+
+	if (!Number.isInteger(invoiceId) || invoiceId <= 0) {
+		res.status(400).json({ error: "Invalid invoice ID" });
+		return;
+	}
+
+	if (!normalizedStatus) {
+		res.status(400).json({
+			error: "Invalid status. Must be: pending, paid, overdue, or cancelled",
+		});
+		return;
+	}
+
+	db.get(
+		`SELECT invoice_id, status FROM invoices WHERE invoice_id = ?`,
+		[invoiceId],
+		(invoiceErr, invoiceRow) => {
+			if (invoiceErr) {
+				res.status(500).json({
+					error: "Could not verify invoice exists",
+					details: invoiceErr.message,
+				});
+				return;
+			}
+
+			if (!invoiceRow) {
+				res.status(404).json({ error: "Invoice not found" });
+				return;
+			}
+
+			db.run(
+				`UPDATE invoices SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE invoice_id = ?`,
+				[normalizedStatus, invoiceId],
+				function updateInvoice(updateErr) {
+					if (updateErr) {
+						res.status(500).json({
+							error: "Could not update invoice status",
+							details: updateErr.message,
+						});
+						return;
+					}
+
+					res.json({
+						id: invoiceId,
+						status: normalizedStatus,
+						message: "Invoice status updated",
+					});
+				},
+			);
+		},
+	);
+});
+
+app.get("/payments", (req, res) => {
+	const invoiceId = req.query.invoiceId ? Number(req.query.invoiceId) : null;
+	const patientId = req.query.patientId ? Number(req.query.patientId) : null;
+	const status = req.query.status
+		? String(req.query.status).toLowerCase()
+		: null;
+
+	let sql = `
+		SELECT
+			p.payment_id AS id,
+			p.invoice_id,
+			i.invoice_number,
+			p.patient_id,
+			pt.name AS patient_name,
+			p.amount,
+			p.payment_date,
+			p.payment_method,
+			p.status,
+			p.reference_number,
+			p.notes,
+			p.created_at
+		FROM payments p
+		INNER JOIN invoices i ON i.invoice_id = p.invoice_id
+		INNER JOIN patients pt ON pt.patient_id = p.patient_id
+		WHERE 1=1
+	`;
+
+	const params = [];
+
+	if (Number.isInteger(invoiceId) && invoiceId > 0) {
+		sql += ` AND p.invoice_id = ?`;
+		params.push(invoiceId);
+	}
+
+	if (Number.isInteger(patientId) && patientId > 0) {
+		sql += ` AND p.patient_id = ?`;
+		params.push(patientId);
+	}
+
+	if (status && normalizePaymentStatus(status)) {
+		sql += ` AND LOWER(p.status) = ?`;
+		params.push(status);
+	}
+
+	sql += ` ORDER BY p.payment_date DESC, p.payment_id DESC`;
+
+	db.all(sql, params, (err, rows) => {
+		if (err) {
+			res.status(500).json({
+				error: "Could not fetch payments",
+				details: err.message,
+			});
+			return;
+		}
+
+		res.json({ payments: rows || [] });
+	});
+});
+
+app.post("/payments", (req, res) => {
+	const { invoiceId, amount, paymentMethod, referenceNumber, notes } =
+		req.body || {};
+	const parsedInvoiceId = Number(invoiceId);
+	const parsedAmount = Number(amount);
+	const normalizedPaymentMethod = String(
+		paymentMethod || "credit_card",
+	).trim();
+	const normalizedReference = String(referenceNumber || "").trim();
+	const normalizedNotes = String(notes || "").trim();
+
+	if (!Number.isInteger(parsedInvoiceId) || parsedInvoiceId <= 0) {
+		res.status(400).json({ error: "Invalid invoice ID" });
+		return;
+	}
+
+	if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+		res.status(400).json({ error: "Amount must be a positive number" });
+		return;
+	}
+
+	db.get(
+		`SELECT i.invoice_id, i.patient_id, i.amount, i.status, COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = i.invoice_id AND status = 'completed'), 0) AS paid_amount
+		FROM invoices i WHERE i.invoice_id = ?`,
+		[parsedInvoiceId],
+		(invoiceErr, invoiceRow) => {
+			if (invoiceErr) {
+				res.status(500).json({
+					error: "Could not verify invoice exists",
+					details: invoiceErr.message,
+				});
+				return;
+			}
+
+			if (!invoiceRow) {
+				res.status(404).json({ error: "Invoice not found" });
+				return;
+			}
+
+			const totalPaid = invoiceRow.paid_amount + parsedAmount;
+			if (totalPaid > invoiceRow.amount) {
+				res.status(400).json({
+					error: "Payment amount exceeds invoice total",
+					details: `Invoice total: $${invoiceRow.amount}, already paid: $${invoiceRow.paid_amount}, payment: $${parsedAmount}`,
+				});
+				return;
+			}
+
+			db.run(
+				`INSERT INTO payments (
+					invoice_id,
+					patient_id,
+					amount,
+					payment_method,
+					reference_number,
+					notes,
+					status,
+					payment_date,
+					created_at,
+					updated_at
+				) VALUES (?, ?, ?, ?, ?, ?, 'completed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+				[
+					parsedInvoiceId,
+					invoiceRow.patient_id,
+					parsedAmount,
+					normalizedPaymentMethod,
+					normalizedReference,
+					normalizedNotes,
+				],
+				function insertPayment(insertErr) {
+					if (insertErr) {
+						res.status(500).json({
+							error: "Could not record payment",
+							details: insertErr.message,
+						});
+						return;
+					}
+
+					const newTotalPaid = invoiceRow.paid_amount + parsedAmount;
+					const isFullyPaid =
+						Math.abs(newTotalPaid - invoiceRow.amount) < 0.01;
+
+					if (isFullyPaid) {
+						db.run(
+							`UPDATE invoices SET status = 'paid', updated_at = CURRENT_TIMESTAMP WHERE invoice_id = ?`,
+							[parsedInvoiceId],
+							(updateErr) => {
+								if (updateErr) {
+									console.error(
+										"Warning: Could not update invoice status to paid:",
+										updateErr.message,
+									);
+								}
+							},
+						);
+					}
+
+					res.status(201).json({
+						id: this.lastID,
+						message: "Payment recorded",
+						fully_paid: isFullyPaid,
+					});
+				},
+			);
+		},
+	);
+});
+
+app.get("/payments/:id", (req, res) => {
+	const paymentId = Number(req.params.id);
+
+	if (!Number.isInteger(paymentId) || paymentId <= 0) {
+		res.status(400).json({ error: "Invalid payment ID" });
+		return;
+	}
+
+	db.get(
+		`SELECT
+			p.payment_id AS id,
+			p.invoice_id,
+			i.invoice_number,
+			i.invoice_date,
+			i.due_date,
+			i.amount AS invoice_amount,
+			p.patient_id,
+			pt.name AS patient_name,
+			pt.email AS patient_email,
+			pt.phone AS patient_phone,
+			p.amount,
+			p.payment_date,
+			p.payment_method,
+			p.status,
+			p.reference_number,
+			p.notes,
+			p.created_at
+		FROM payments p
+		INNER JOIN invoices i ON i.invoice_id = p.invoice_id
+		INNER JOIN patients pt ON pt.patient_id = p.patient_id
+		WHERE p.payment_id = ?`,
+		[paymentId],
+		(err, row) => {
+			if (err) {
+				res.status(500).json({
+					error: "Could not fetch payment",
+					details: err.message,
+				});
+				return;
+			}
+
+			if (!row) {
+				res.status(404).json({ error: "Payment not found" });
+				return;
+			}
+
+			res.json(row);
+		},
+	);
+});
+
 app.delete("/patients/:id", (req, res) => {
 	const patientId = Number(req.params.id);
 
@@ -906,6 +1471,8 @@ app.delete("/patients/:id", (req, res) => {
 				"patient_medications",
 				"lab_results",
 				"appointments",
+				"payments",
+				"invoices",
 			];
 
 			const deleteRows = dependentTables.map(
