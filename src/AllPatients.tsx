@@ -25,14 +25,66 @@ interface Patient {
 	created_at: string;
 }
 
-function prettyGender(rawGender: string): string {
-	const normalized = rawGender.trim().toLowerCase();
-
-	if (!normalized || normalized === "unknown") {
-		return "Not provided";
+function prettyStatus(rawStatus: string): string {
+	if (!rawStatus) {
+		return "Unknown";
 	}
 
-	return rawGender;
+	return rawStatus
+		.split("-")
+		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+		.join(" ");
+}
+
+function statusPillClasses(status: string): string {
+	const normalizedStatus = status
+		.trim()
+		.toLowerCase()
+		.replace(/[_\s]+/g, "-");
+
+	switch (normalizedStatus) {
+		case "enrolled":
+			return "bg-emerald-100 text-emerald-800";
+		case "eligible":
+			return "bg-cyan-100 text-cyan-800";
+		case "screening":
+			return "bg-yellow-100 text-yellow-800";
+		case "hold":
+			return "bg-amber-100 text-amber-800";
+		case "not-eligible":
+			return "bg-rose-100 text-rose-800";
+		default:
+			return "bg-slate-200 text-slate-700";
+	}
+}
+
+function prettyGender(rawGender: string): string {
+	const normalized = String(rawGender || "")
+		.trim()
+		.toLowerCase();
+
+	if (!normalized || normalized === "unknown") {
+		return "Unknown";
+	}
+
+	if (normalized === "m" || normalized === "male") {
+		return "Male";
+	}
+
+	if (normalized === "f" || normalized === "female") {
+		return "Female";
+	}
+
+	if (
+		normalized === "other" ||
+		normalized === "non-binary" ||
+		normalized === "nonbinary" ||
+		normalized === "nb"
+	) {
+		return "Other";
+	}
+
+	return rawGender.trim();
 }
 
 function normalizeText(value: string | number): string {
@@ -210,9 +262,6 @@ type AgeFilter = "all" | "under18" | "18to40" | "41to60" | "61plus";
 export default function AllPatients({ onLogout }: { onLogout?: () => void }) {
 	const [patients, setPatients] = useState<Patient[]>([]);
 	const [error, setError] = useState("");
-	const [selectedPatientId, setSelectedPatientId] = useState<number | null>(
-		null,
-	);
 	const [searchQuery, setSearchQuery] = useState("");
 	const [statusFilter, setStatusFilter] = useState<string>("all");
 	const [genderFilter, setGenderFilter] = useState<string>("all");
@@ -325,7 +374,6 @@ export default function AllPatients({ onLogout }: { onLogout?: () => void }) {
 		setStatusFilter("all");
 		setGenderFilter("all");
 		setAgeFilter("all");
-		setSelectedPatientId(null);
 	}
 
 	return (
@@ -468,28 +516,33 @@ export default function AllPatients({ onLogout }: { onLogout?: () => void }) {
 							<ul className="grid grid-cols-1 gap-4 pr-3 sm:grid-cols-2">
 								{filteredPatients.map((patient) => (
 									<li key={patient.id}>
-										<button
-											type="button"
-											onClick={() =>
-												setSelectedPatientId(patient.id)
-											}
-											className={`h-full aspect-square w-full rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-teal-400 ${
-												selectedPatientId === patient.id
-													? "border-teal-500 ring-1 ring-teal-400"
-													: "border-slate-200"
-											}`}
+										<Link
+											to={`/patients/${patient.id}`}
+											className="patient-card block h-56 w-full rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition duration-200 hover:border-teal-300 hover:shadow-lg hover:ring-1 hover:ring-teal-200 focus:outline-none focus:ring-2 focus:ring-teal-400"
 										>
-											<div className="flex h-full flex-col justify-between">
-												<div>
-													<p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-														Patient #{patient.id}
-													</p>
-													<h3 className="mt-2 text-xl font-bold leading-snug text-slate-800">
-														{patient.full_name}
-													</h3>
+											<div className="flex h-full flex-col gap-6">
+												<div className="flex items-start justify-between gap-3">
+													<div>
+														<p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+															Patient #
+															{patient.id}
+														</p>
+														<h3 className="mt-2 text-xl font-bold leading-snug text-slate-800">
+															{patient.full_name}
+														</h3>
+													</div>
+													<span
+														className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${statusPillClasses(
+															patient.enrollment_status,
+														)}`}
+													>
+														{prettyStatus(
+															patient.enrollment_status,
+														)}
+													</span>
 												</div>
 
-												<div className="grid grid-cols-1 gap-2 text-sm text-slate-600">
+												<div className="mt-auto grid grid-cols-1 gap-2 text-sm text-slate-600">
 													<p>
 														<span className="font-semibold text-slate-700">
 															Age:
@@ -506,7 +559,7 @@ export default function AllPatients({ onLogout }: { onLogout?: () => void }) {
 													</p>
 												</div>
 											</div>
-										</button>
+										</Link>
 									</li>
 								))}
 							</ul>

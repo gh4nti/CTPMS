@@ -91,13 +91,32 @@ function statusPillClasses(status: string): string {
 }
 
 function prettyGender(rawGender: string): string {
-	const normalized = rawGender.trim().toLowerCase();
+	const normalized = String(rawGender || "")
+		.trim()
+		.toLowerCase();
 
 	if (!normalized || normalized === "unknown") {
-		return "Not provided";
+		return "Unknown";
 	}
 
-	return rawGender;
+	if (normalized === "m" || normalized === "male") {
+		return "Male";
+	}
+
+	if (normalized === "f" || normalized === "female") {
+		return "Female";
+	}
+
+	if (
+		normalized === "other" ||
+		normalized === "non-binary" ||
+		normalized === "nonbinary" ||
+		normalized === "nb"
+	) {
+		return "Other";
+	}
+
+	return rawGender.trim();
 }
 
 interface AppProps {
@@ -420,102 +439,62 @@ export default function App({ onLogout }: AppProps) {
 						</div>
 					) : (
 						<>
-							<ul className="space-y-4">
-								{patients.slice(0, 5).map((patient) => (
-									<li
-										key={patient.id}
-										className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm"
-									>
-										<div className="mb-3 flex items-center justify-between gap-3">
-											<span className="text-base font-semibold text-slate-800">
-												#{patient.id} -{" "}
-												{patient.full_name}
-											</span>
-											<span
-												className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${statusPillClasses(
-													patient.enrollment_status,
-												)}`}
-											>
-												{prettyStatus(
-													patient.enrollment_status,
-												)}
-											</span>
-										</div>
-										<div className="grid grid-cols-1 gap-1 text-sm text-slate-600 sm:grid-cols-2">
-											<div>
-												<span className="font-medium text-slate-700">
-													DOB:
-												</span>{" "}
-												{patient.dob}
+							<ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+								{patients.slice(0, 6).map((patient) => (
+									<li key={patient.id}>
+										<Link
+											to={`/patients/${patient.id}`}
+											className="patient-card block h-56 w-full rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition duration-200 hover:border-teal-300 hover:shadow-lg hover:ring-1 hover:ring-teal-200 focus:outline-none focus:ring-2 focus:ring-teal-400"
+										>
+											<div className="flex h-full flex-col gap-6">
+												<div className="flex items-start justify-between gap-3">
+													<div>
+														<p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+															Patient #
+															{patient.id}
+														</p>
+														<h3 className="mt-2 text-xl font-bold leading-snug text-slate-800">
+															{patient.full_name}
+														</h3>
+													</div>
+													<span
+														className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${statusPillClasses(
+															patient.enrollment_status,
+														)}`}
+													>
+														{prettyStatus(
+															patient.enrollment_status,
+														)}
+													</span>
+												</div>
+
+												<div className="mt-auto grid grid-cols-1 gap-2 text-sm text-slate-600">
+													<p>
+														<span className="font-semibold text-slate-700">
+															Age:
+														</span>{" "}
+														{patient.age ?? "-"}
+													</p>
+													<p>
+														<span className="font-semibold text-slate-700">
+															Gender:
+														</span>{" "}
+														{prettyGender(
+															patient.gender,
+														)}
+													</p>
+												</div>
 											</div>
-											<div>
-												<span className="font-medium text-slate-700">
-													Age:
-												</span>{" "}
-												{patient.age ?? "-"}
-											</div>
-											<div>
-												<span className="font-medium text-slate-700">
-													Gender:
-												</span>{" "}
-												{prettyGender(patient.gender)}
-											</div>
-											<div>
-												<span className="font-medium text-slate-700">
-													Phone:
-												</span>{" "}
-												{patient.phone || "-"}
-											</div>
-											<div>
-												<span className="font-medium text-slate-700">
-													Email:
-												</span>{" "}
-												{patient.email || "-"}
-											</div>
-											<div>
-												<span className="font-medium text-slate-700">
-													Height:
-												</span>{" "}
-												{patient.height
-													? `${patient.height} cm`
-													: "-"}
-											</div>
-											<div>
-												<span className="font-medium text-slate-700">
-													Weight:
-												</span>{" "}
-												{patient.weight
-													? `${patient.weight} kg`
-													: "-"}
-											</div>
-											<div>
-												<span className="font-medium text-slate-700">
-													Blood Group:
-												</span>{" "}
-												{patient.blood_group || "-"}
-											</div>
-											<div>
-												<span className="font-medium text-slate-700">
-													Disease:
-												</span>{" "}
-												{patient.disease || "-"}
-											</div>
-											<div>
-												<span className="font-medium text-slate-700">
-													Trial:
-												</span>{" "}
-												{patient.trial || "-"}
-											</div>
-										</div>
+										</Link>
 									</li>
 								))}
 							</ul>
-							{patients.length > 5 && (
+							{patients.length > 6 && (
 								<Link
 									to="/all-patients"
 									className="mt-4 inline-block rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800"
 								>
-									Show More ({patients.length - 5} more)
+									Show More ({patients.length - 6} more)
 								</Link>
 							)}
 						</>

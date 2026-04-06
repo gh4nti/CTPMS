@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import App from "./App";
 import AllPatients from "./AllPatients";
+import PatientProfile from "./PatientProfile";
 import ProtectedRoute from "./ProtectedRoute";
 import "./index.css";
 
@@ -94,6 +95,19 @@ function AppWrapper() {
 							error={error}
 						>
 							<App onLogout={handleLogout} />
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="/patients/:id"
+					element={
+						<ProtectedRoute
+							isAuthenticated={isAuthenticated}
+							onLogin={handleLogin}
+							isLoading={isLoading}
+							error={error}
+						>
+							<PatientProfile onLogout={handleLogout} />
 						</ProtectedRoute>
 					}
 				/>

@@ -26,6 +26,20 @@ body {
 		linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
 }
 
+.patient-card {
+	transition:
+		border-color 180ms ease,
+		box-shadow 180ms ease,
+		background-color 180ms ease;
+}
+
+.patient-card:hover {
+	border-color: #5eead4;
+	box-shadow:
+		0 14px 30px rgba(15, 118, 110, 0.2),
+		0 0 0 1px rgba(45, 212, 191, 0.2);
+}
+
 @media (prefers-color-scheme: dark) {
 	:root {
 		color: #e2e8f0;
@@ -128,5 +142,12 @@ body {
 	.shadow-sm,
 	.shadow-slate-200\/70 {
 		box-shadow: 0 10px 24px rgba(2, 6, 23, 0.45) !important;
+	}
+
+	.patient-card:hover {
+		border-color: #14b8a6 !important;
+		box-shadow:
+			0 16px 30px rgba(2, 6, 23, 0.65),
+			0 0 0 1px rgba(45, 212, 191, 0.35) !important;
 	}
 }
