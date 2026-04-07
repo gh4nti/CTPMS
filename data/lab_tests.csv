@@ -1,0 +1,16 @@
+TestID,TestName,Unit,NormalRange
+1,Hemoglobin,g/dL,12.0-17.5
+2,Fasting Blood Glucose,mg/dL,70-100
+3,HbA1c,%,4.0-5.6
+4,Serum Creatinine,mg/dL,0.6-1.2
+5,eGFR,mL/min,≥60
+6,Total Cholesterol,mg/dL,<200
+7,LDL Cholesterol,mg/dL,<100
+8,HDL Cholesterol,mg/dL,>40
+9,Triglycerides,mg/dL,<150
+10,ALT,U/L,7-56
+11,AST,U/L,10-40
+12,TSH,mIU/L,0.4-4.0
+13,Platelet Count,10^3/uL,150-400
+14,WBC Count,10^3/uL,4.5-11.0
+15,PSA,ng/mL,<4.0

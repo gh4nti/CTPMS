@@ -1,0 +1,65 @@
+CriteriaID,TrialID,CriteriaType,AgeMin,AgeMax,RequiredDisease,LabThreshold,MedicationRestriction,BiomarkerRequirement
+1,1,Inclusion,25,60,1,HbA1c > 7.3,,HER2+
+2,1,Exclusion,30,65,1,,,
+3,2,Inclusion,25,70,2,,,
+4,2,Exclusion,18,65,2,,No Immunosuppressants,HER2+
+5,3,Inclusion,30,65,3,,No Steroids,BCR-ABL positive
+6,3,Exclusion,21,75,3,HbA1c > 8.6,,
+7,4,Inclusion,21,70,4,HbA1c > 6.8,No Warfarin,HER2+
+8,4,Exclusion,30,80,4,,No Steroids,BCR-ABL positive
+9,4,Inclusion,21,80,4,,,HER2+
+10,5,Inclusion,25,80,5,HbA1c > 8.0,No Steroids,
+11,5,Inclusion,21,75,5,,,HER2+
+12,5,Exclusion,18,70,5,,,EGFR Mutation
+13,6,Inclusion,25,70,6,,No Steroids,
+14,6,Exclusion,30,65,6,,No Immunosuppressants,
+15,7,Inclusion,18,70,7,HbA1c > 6.8,No Steroids,
+16,7,Inclusion,25,65,7,HbA1c > 7.5,No Steroids,
+17,7,Exclusion,30,75,7,HbA1c > 7.3,No Warfarin,
+18,8,Inclusion,25,75,8,HbA1c > 8.6,No Warfarin,
+19,8,Inclusion,30,80,8,HbA1c > 8.7,,
+20,8,Inclusion,25,80,8,,No Immunosuppressants,BCR-ABL positive
+21,9,Inclusion,30,60,9,,,
+22,9,Exclusion,30,70,9,,No Immunosuppressants,HER2+
+23,9,Exclusion,30,70,9,HbA1c > 8.4,,BCR-ABL positive
+24,10,Inclusion,21,70,10,,,EGFR Mutation
+25,10,Exclusion,25,60,10,HbA1c > 7.4,,BCR-ABL positive
+26,10,Exclusion,21,65,10,,,
+27,11,Inclusion,30,75,11,HbA1c > 7.4,No Steroids,BCR-ABL positive
+28,11,Inclusion,30,60,11,,No Warfarin,
+29,12,Inclusion,18,75,12,HbA1c > 8.3,No Warfarin,HER2+
+30,12,Exclusion,30,60,12,,No Warfarin,
+31,13,Inclusion,18,65,13,HbA1c > 9.0,No Immunosuppressants,BCR-ABL positive
+32,13,Inclusion,18,70,13,HbA1c > 7.0,No Steroids,HER2+
+33,13,Inclusion,25,80,13,HbA1c > 8.0,,HER2+
+34,14,Inclusion,18,75,14,,No Steroids,
+35,14,Exclusion,25,75,14,HbA1c > 8.9,No Warfarin,
+36,14,Inclusion,21,60,14,HbA1c > 7.1,No Immunosuppressants,HER2+
+37,15,Inclusion,30,80,15,,No Steroids,EGFR Mutation
+38,15,Inclusion,25,70,15,,No Steroids,
+39,15,Exclusion,30,65,15,HbA1c > 6.9,No Steroids,HER2+
+40,16,Inclusion,18,80,16,HbA1c > 8.1,No Immunosuppressants,HER2+
+41,16,Inclusion,21,80,16,,No Warfarin,HER2+
+42,16,Exclusion,30,60,16,,No Immunosuppressants,
+43,17,Inclusion,30,75,17,HbA1c > 6.6,No Warfarin,BCR-ABL positive
+44,17,Exclusion,21,75,17,HbA1c > 6.8,No Immunosuppressants,
+45,17,Inclusion,30,65,17,,,BCR-ABL positive
+46,18,Inclusion,21,65,18,HbA1c > 9.0,No Steroids,BCR-ABL positive
+47,18,Exclusion,25,65,18,,No Immunosuppressants,HER2+
+48,18,Exclusion,25,60,18,HbA1c > 8.2,No Warfarin,BCR-ABL positive
+49,19,Inclusion,21,75,19,,No Steroids,HER2+
+50,19,Exclusion,21,65,19,,,BCR-ABL positive
+51,19,Exclusion,30,65,19,HbA1c > 6.7,No Immunosuppressants,EGFR Mutation
+52,20,Inclusion,30,65,20,HbA1c > 8.0,,BCR-ABL positive
+53,20,Inclusion,30,60,20,,,
+54,20,Exclusion,18,70,20,,No Immunosuppressants,EGFR Mutation
+55,21,Inclusion,21,75,22,,,
+56,21,Exclusion,21,70,22,,,
+57,22,Inclusion,30,75,23,,No Immunosuppressants,EGFR Mutation
+58,22,Inclusion,21,75,23,HbA1c > 6.8,No Immunosuppressants,HER2+
+59,23,Inclusion,21,75,26,HbA1c > 6.7,,EGFR Mutation
+60,23,Exclusion,30,60,26,HbA1c > 8.9,No Immunosuppressants,
+61,24,Inclusion,30,75,27,HbA1c > 6.6,No Steroids,
+62,24,Exclusion,30,80,27,HbA1c > 7.6,,
+63,25,Inclusion,25,80,29,HbA1c > 6.8,,HER2+
+64,25,Exclusion,25,65,29,HbA1c > 8.5,,HER2+

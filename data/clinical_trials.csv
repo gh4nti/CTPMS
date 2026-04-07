@@ -1,0 +1,26 @@
+TrialID,TrialTitle,Phase,Sponsor,TargetDisease,TrialStatus,MaxParticipants
+1,METFORM-X: Metformin Efficacy in Early-Stage T2DM,III,GlaxoSmithKline,1,Open,100
+2,HYPER-CTRL: Lisinopril vs Losartan in Resistant Hypertension,II,Sanofi,2,Open,100
+3,RENALGUARD: CKD Progression Delay with ARB Therapy,II,Roche,3,Open,300
+4,BREAST-HOPE: Trastuzumab Adjuvant Therapy in HER2+ Breast Cancer,I,Tata Memorial Centre,4,Suspended,100
+5,LUNGSHIELD: Immunotherapy in Stage III NSCLC,I,Merck & Co.,5,Open,200
+6,COLON-FIRST: Aspirin Chemoprevention in Colorectal Cancer,III,AIIMS New Delhi,6,Suspended,50
+7,ALZCARE-1: Donepezil Extended Release in Mild Alzheimer's,I,Novartis AG,7,Open,50
+8,PARKINSON-PLUS: Levodopa Dose Optimization Trial,I,Sanofi,8,Closed,200
+9,MS-REMIT: Rituximab in Relapsing-Remitting MS,I,AIIMS New Delhi,9,Open,200
+10,ARTHRO-BIO: Adalimumab vs Methotrexate in RA,II,AstraZeneca,10,Open,150
+11,BONE-DENSITY: Bisphosphonate Trial in Postmenopausal Osteoporosis,IV,Novartis AG,11,Suspended,150
+12,ASTHMA-CTRL: High-Dose Fluticasone in Severe Asthma,II,Sanofi,12,Open,250
+13,COPD-BREATH: Salbutamol Nebulization Protocol in COPD,I,Johnson & Johnson,13,Open,50
+14,HEARTFAIL-1: Furosemide Dosing in Decompensated Heart Failure,IV,AstraZeneca,14,Suspended,100
+15,AFIB-COAT: Apixaban vs Warfarin in Non-Valvular AF,III,AIIMS New Delhi,15,Open,150
+16,CAD-STATIN: Rosuvastatin Intensity in Stable CAD,IV,Johnson & Johnson,16,Open,50
+17,POST-STROKE: Aspirin + Clopidogrel in Ischemic Stroke Prevention,IV,AstraZeneca,17,Closed,150
+18,HIV-ADVANCE: Tenofovir-Based Regimen Optimization,II,Pfizer Inc.,18,Open,300
+19,HEPB-CLEAR: Antiviral Therapy in Chronic Hepatitis B,I,Novartis AG,19,Suspended,300
+20,TB-FAST: Short-Course Rifampicin Regimen in Pulmonary TB,IV,Roche,20,Open,250
+21,LUPUS-REMIT: Hydroxychloroquine in Active SLE,I,Novartis AG,22,Open,300
+22,CROHN-HEAL: Adalimumab Induction in Moderate Crohn's Disease,II,GlaxoSmithKline,23,Open,150
+23,MELANO-IMMUNE: Checkpoint Inhibitor in Stage IV Melanoma,IV,Pfizer Inc.,26,Open,100
+24,PROSTATE-WATCH: PSA-Guided Active Surveillance Protocol,I,Johnson & Johnson,27,Open,300
+25,LEUKEMIA-PRIME: Imatinib in Newly Diagnosed CML,III,Sanofi,29,Open,50

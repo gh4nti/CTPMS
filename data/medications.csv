@@ -1,0 +1,31 @@
+MedicationID,DrugName,DrugClass
+1,Metformin,Biguanide
+2,Insulin Glargine,Insulin
+3,Lisinopril,ACE Inhibitor
+4,Amlodipine,Calcium Channel Blocker
+5,Atorvastatin,Statin
+6,Rosuvastatin,Statin
+7,Aspirin,Antiplatelet
+8,Warfarin,Anticoagulant
+9,Apixaban,Anticoagulant
+10,Salbutamol,Beta-2 Agonist
+11,Fluticasone,Corticosteroid
+12,Prednisolone,Corticosteroid
+13,Methotrexate,DMARD
+14,Adalimumab,Biologic/TNF Inhibitor
+15,Rituximab,Monoclonal Antibody
+16,Trastuzumab,Monoclonal Antibody
+17,Tamoxifen,SERM
+18,Imatinib,Tyrosine Kinase Inhibitor
+19,Levodopa,Dopamine Precursor
+20,Donepezil,Cholinesterase Inhibitor
+21,Sertraline,SSRI
+22,Escitalopram,SSRI
+23,Losartan,ARB
+24,Furosemide,Loop Diuretic
+25,Omeprazole,PPI
+26,Levothyroxine,Thyroid Hormone
+27,Carbamazepine,Anticonvulsant
+28,Valproate,Anticonvulsant
+29,Tenofovir,Antiretroviral
+30,Rifampicin,Antibiotic

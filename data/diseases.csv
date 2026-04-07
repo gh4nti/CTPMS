@@ -1,0 +1,36 @@
+DiseaseID,DiseaseName,ICDCode
+1,Type 2 Diabetes Mellitus,E11
+2,Hypertension,I10
+3,Chronic Kidney Disease,N18
+4,Breast Cancer,C50
+5,Lung Cancer,C34
+6,Colorectal Cancer,C18
+7,Alzheimer's Disease,G30
+8,Parkinson's Disease,G20
+9,Multiple Sclerosis,G35
+10,Rheumatoid Arthritis,M05
+11,Osteoporosis,M81
+12,Asthma,J45
+13,COPD,J44
+14,Heart Failure,I50
+15,Atrial Fibrillation,I48
+16,Coronary Artery Disease,I25
+17,Stroke,I63
+18,HIV/AIDS,B20
+19,Hepatitis B,B18.1
+20,Hepatitis C,B18.2
+21,Tuberculosis,A15
+22,Systemic Lupus Erythematosus,M32
+23,Crohn's Disease,K50
+24,Ulcerative Colitis,K51
+25,Psoriasis,L40
+26,Melanoma,C43
+27,Prostate Cancer,C61
+28,Ovarian Cancer,C56
+29,Leukemia,C91
+30,Lymphoma,C85
+31,Obesity,E66
+32,Hyperlipidemia,E78
+33,Depression,F32
+34,Anxiety Disorder,F41
+35,Epilepsy,G40
