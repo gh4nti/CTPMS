@@ -29,7 +29,9 @@ async function buildApiError(response: Response): Promise<ApiError> {
 }
 
 export async function fetchPatientById(id: string): Promise<Patient> {
-	const response = await fetchWithAuth(`/api/patients/${id}`);
+	const response = await fetchWithAuth(`/api/patients/${id}`, {
+		cache: "no-store",
+	});
 	if (!response.ok) {
 		throw await buildApiError(response);
 	}
@@ -40,7 +42,9 @@ export async function fetchPatientById(id: string): Promise<Patient> {
 export async function fetchPatientRecordsById(
 	id: string,
 ): Promise<ClinicalRecords> {
-	const response = await fetchWithAuth(`/api/patients/${id}/records`);
+	const response = await fetchWithAuth(`/api/patients/${id}/records`, {
+		cache: "no-store",
+	});
 	if (!response.ok) {
 		throw await buildApiError(response);
 	}
