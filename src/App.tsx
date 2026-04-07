@@ -205,7 +205,7 @@ export default function App({ onLogout, currentUser }: AppProps) {
 							Clinical Trial Patient Management
 						</p>
 						<h1 className="mt-3 text-3xl font-bold text-slate-800 sm:text-4xl">
-							Admin Dashboard
+							Guest Dashboard
 						</h1>
 					</div>
 					<div className="flex flex-wrap gap-3">

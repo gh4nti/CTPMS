@@ -269,7 +269,9 @@ Generated: ${new Date().toLocaleString()}
 	if (loading) {
 		return (
 			<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-				<div className="bg-white rounded-lg p-6">Loading...</div>
+				<div className="bg-slate-950 rounded-lg p-6 text-slate-100">
+					Loading...
+				</div>
 			</div>
 		);
 	}
@@ -277,11 +279,11 @@ Generated: ${new Date().toLocaleString()}
 	if (!invoice) {
 		return (
 			<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-				<div className="bg-white rounded-lg p-6">
+				<div className="bg-slate-950 rounded-lg p-6 text-slate-100">
 					<p>Invoice not found</p>
 					<button
 						onClick={onClose}
-						className="mt-4 bg-gray-500 text-white px-4 py-2 rounded"
+						className="mt-4 bg-slate-700 text-white px-4 py-2 rounded hover:bg-slate-600"
 					>
 						Close
 					</button>
@@ -295,53 +297,57 @@ Generated: ${new Date().toLocaleString()}
 
 	return (
 		<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center overflow-y-auto">
-			<div className="bg-white rounded-lg p-8 max-w-2xl w-full my-8">
+			<div className="bg-slate-950/95 border border-slate-700 rounded-lg p-8 max-w-2xl w-full my-8 shadow-2xl">
 				<div className="flex justify-between items-center mb-6">
-					<h2 className="text-2xl font-bold">
+					<h2 className="text-2xl font-bold text-slate-100">
 						Invoice {invoice.invoice_number}
 					</h2>
 					<button
 						onClick={onClose}
-						className="text-gray-500 hover:text-gray-700 text-2xl"
+						className="text-slate-400 hover:text-slate-200 text-2xl"
 					>
 						×
 					</button>
 				</div>
 
 				{error && (
-					<div className="mb-4 p-4 bg-red-100 text-red-700 rounded">
+					<div className="mb-4 p-4 bg-red-950 text-red-200 rounded border border-red-700">
 						{error}
 					</div>
 				)}
 
-				<div className="grid grid-cols-2 gap-4 mb-6 p-4 bg-gray-50 rounded">
+				<div className="grid grid-cols-2 gap-4 mb-6 p-4 bg-slate-900/50 border border-slate-700 rounded">
 					<div>
-						<p className="text-sm text-gray-600">Patient</p>
-						<p className="font-semibold">{invoice.patient_name}</p>
-						<p className="text-sm text-gray-600">
+						<p className="text-sm text-slate-400">Patient</p>
+						<p className="font-semibold text-slate-100">
+							{invoice.patient_name}
+						</p>
+						<p className="text-sm text-slate-400">
 							{invoice.patient_email}
 						</p>
-						<p className="text-sm text-gray-600">
+						<p className="text-sm text-slate-400">
 							{invoice.patient_phone}
 						</p>
 					</div>
 					<div>
-						<p className="text-sm text-gray-600">Invoice Date</p>
-						<p className="font-semibold">
+						<p className="text-sm text-slate-400">Invoice Date</p>
+						<p className="font-semibold text-slate-100">
 							{new Date(
 								invoice.invoice_date,
 							).toLocaleDateString()}
 						</p>
-						<p className="text-sm text-gray-600 mt-2">Due Date</p>
-						<p className="font-semibold">
+						<p className="text-sm text-slate-400 mt-2">Due Date</p>
+						<p className="font-semibold text-slate-100">
 							{new Date(invoice.due_date).toLocaleDateString()}
 						</p>
 					</div>
 				</div>
 
-				<div className="mb-6 p-4 border rounded">
-					<p className="text-sm text-gray-600">Description</p>
-					<p className="font-semibold">{invoice.description}</p>
+				<div className="mb-6 p-4 border border-slate-700 rounded bg-slate-900/30">
+					<p className="text-sm text-slate-400">Description</p>
+					<p className="font-semibold text-slate-100">
+						{invoice.description}
+					</p>
 				</div>
 
 				<div className="grid grid-cols-4 gap-4 mb-6">
@@ -379,33 +385,35 @@ Generated: ${new Date().toLocaleString()}
 
 				{invoice.payments.length > 0 && (
 					<div className="mb-6">
-						<h3 className="font-semibold mb-3">Payment History</h3>
+						<h3 className="font-semibold mb-3 text-slate-100">
+							Payment History
+						</h3>
 						<div className="overflow-x-auto">
 							<table className="w-full text-sm">
-								<thead className="bg-slate-50 border-b border-gray-200">
+								<thead className="bg-slate-900/50 border-b border-slate-700">
 									<tr>
-										<th className="px-3 py-2 text-left">
+										<th className="px-3 py-2 text-left text-slate-300">
 											Date
 										</th>
-										<th className="px-3 py-2 text-left">
+										<th className="px-3 py-2 text-left text-slate-300">
 											Amount
 										</th>
-										<th className="px-3 py-2 text-left">
+										<th className="px-3 py-2 text-left text-slate-300">
 											Method
 										</th>
-										<th className="px-3 py-2 text-left">
+										<th className="px-3 py-2 text-left text-slate-300">
 											Reference
 										</th>
-										<th className="px-3 py-2 text-left">
+										<th className="px-3 py-2 text-left text-slate-300">
 											Status
 										</th>
 									</tr>
 								</thead>
-								<tbody className="divide-y">
+								<tbody className="divide-y divide-slate-700">
 									{invoice.payments.map((payment) => (
 										<tr
 											key={payment.id}
-											className="hover:bg-gray-50"
+											className="hover:bg-slate-900/30 text-slate-300"
 										>
 											<td className="px-3 py-2">
 												{new Date(
@@ -418,12 +426,12 @@ Generated: ${new Date().toLocaleString()}
 											<td className="px-3 py-2">
 												{payment.payment_method}
 											</td>
-											<td className="px-3 py-2 text-gray-600">
+											<td className="px-3 py-2 text-slate-500">
 												{payment.reference_number ||
 													"-"}
 											</td>
 											<td className="px-3 py-2">
-												<span className="px-2 py-1 rounded text-xs bg-green-100 text-green-800">
+												<span className="px-2 py-1 rounded text-xs bg-green-950 text-green-200 border border-green-800">
 													{payment.status}
 												</span>
 											</td>
@@ -438,12 +446,14 @@ Generated: ${new Date().toLocaleString()}
 				{!isPaid && canManageBilling && (
 					<form
 						onSubmit={handleRecordPayment}
-						className="mb-6 p-4 bg-blue-50 rounded"
+						className="mb-6 p-4 bg-slate-900/50 border border-slate-700 rounded"
 					>
-						<h3 className="font-semibold mb-4">Record Payment</h3>
+						<h3 className="font-semibold mb-4 text-slate-100">
+							Record Payment
+						</h3>
 						<div className="grid grid-cols-2 gap-4 mb-4">
 							<div>
-								<label className="block text-sm font-medium mb-1">
+								<label className="block text-sm font-medium mb-1 text-slate-300">
 									Amount (₹)
 								</label>
 								<input
@@ -454,15 +464,15 @@ Generated: ${new Date().toLocaleString()}
 										setPaymentAmount(e.target.value)
 									}
 									placeholder="0.00"
-									className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+									className="w-full px-3 py-2 border border-slate-600 rounded bg-slate-950 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
 									required
 								/>
-								<p className="text-xs text-gray-600 mt-1">
+								<p className="text-xs text-slate-400 mt-1">
 									Remaining: ₹{remainingBalance.toFixed(2)}
 								</p>
 							</div>
 							<div>
-								<label className="block text-sm font-medium mb-1">
+								<label className="block text-sm font-medium mb-1 text-slate-300">
 									Payment Method
 								</label>
 								<select
@@ -472,7 +482,7 @@ Generated: ${new Date().toLocaleString()}
 											e.target.value as PaymentMethod,
 										)
 									}
-									className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+									className="w-full px-3 py-2 border border-slate-600 rounded bg-slate-950 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
 								>
 									<option value="credit_card">
 										Credit Card
@@ -489,7 +499,7 @@ Generated: ${new Date().toLocaleString()}
 							</div>
 						</div>
 						<div className="mb-4">
-							<label className="block text-sm font-medium mb-1">
+							<label className="block text-sm font-medium mb-1 text-slate-300">
 								Reference Number (Optional)
 							</label>
 							<input
@@ -497,11 +507,11 @@ Generated: ${new Date().toLocaleString()}
 								value={paymentRef}
 								onChange={(e) => setPaymentRef(e.target.value)}
 								placeholder="e.g., Transaction ID or Check #"
-								className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+								className="w-full px-3 py-2 border border-slate-600 rounded bg-slate-950 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
 							/>
 						</div>
 						<div className="mb-4">
-							<label className="block text-sm font-medium mb-1">
+							<label className="block text-sm font-medium mb-1 text-slate-300">
 								Notes (Optional)
 							</label>
 							<textarea
@@ -510,7 +520,7 @@ Generated: ${new Date().toLocaleString()}
 									setPaymentNotes(e.target.value)
 								}
 								placeholder="Additional notes..."
-								className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+								className="w-full px-3 py-2 border border-slate-600 rounded bg-slate-950 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
 								rows={2}
 							/>
 						</div>
@@ -529,19 +539,19 @@ Generated: ${new Date().toLocaleString()}
 				<div className="flex gap-2 justify-end">
 					<button
 						onClick={downloadReceipt}
-						className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-semibold"
+						className="px-4 py-2 bg-green-700 text-white rounded hover:bg-green-600 font-semibold"
 					>
 						Download Receipt
 					</button>
 					<button
 						onClick={printReceipt}
-						className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-semibold"
+						className="px-4 py-2 bg-blue-700 text-white rounded hover:bg-blue-600 font-semibold"
 					>
 						Print Receipt
 					</button>
 					<button
 						onClick={onClose}
-						className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 font-semibold"
+						className="px-4 py-2 bg-slate-700 text-white rounded hover:bg-slate-600 font-semibold"
 					>
 						Close
 					</button>
