@@ -57,6 +57,8 @@ export default function App({ onLogout, currentUser }: AppProps) {
 	const [patients, setPatients] = useState<Patient[]>([]);
 	const [message, setMessage] = useState("");
 	const [isError, setIsError] = useState(false);
+	const dashboardRoleLabel =
+		currentUser?.role === "admin" ? "Admin" : "Guest";
 	const canCreatePatients = Boolean(
 		currentUser && hasPermission(currentUser.role, "patients:create"),
 	);
@@ -205,7 +207,7 @@ export default function App({ onLogout, currentUser }: AppProps) {
 							Clinical Trial Patient Management
 						</p>
 						<h1 className="mt-3 text-3xl font-bold text-slate-800 sm:text-4xl">
-							Guest Dashboard
+							{dashboardRoleLabel} Dashboard
 						</h1>
 					</div>
 					<div className="flex flex-wrap gap-3">

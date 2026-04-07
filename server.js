@@ -393,20 +393,12 @@ function updatePatientStatus(patientId, inputStatus, callback) {
 					updateSql = `UPDATE patient_trial_matches SET eligibility_status = ? WHERE match_id = ?`;
 					updateParams = ["Pending", latestMatchId];
 				} else {
-					callback(
-						new Error(
-							"This patient has no status record to update.",
-						),
-					);
+					callback(null);
 					return;
 				}
 			} else if (normalizedStatus === "eligible") {
 				if (!latestMatchId) {
-					callback(
-						new Error(
-							"This patient has no trial match record to update.",
-						),
-					);
+					callback(null);
 					return;
 				}
 
@@ -420,11 +412,7 @@ function updatePatientStatus(patientId, inputStatus, callback) {
 					updateSql = `UPDATE enrollment SET enrollment_status = ? WHERE enrollment_id = ?`;
 					updateParams = ["Rejected", latestEnrollmentId];
 				} else {
-					callback(
-						new Error(
-							"This patient has no status record to update.",
-						),
-					);
+					callback(null);
 					return;
 				}
 			}
