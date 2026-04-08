@@ -17,24 +17,63 @@ app.use((req, res, next) => {
 
 const dbPath = path.join(__dirname, "clinical_trials.db");
 const db = new sqlite3.Database(dbPath);
+let manualEnrollmentStatusColumnAvailable = false;
+
+function getManualEnrollmentStatusSql(alias) {
+	const safeAlias = String(alias || "p").trim() || "p";
+	if (!manualEnrollmentStatusColumnAvailable) {
+		return "LOWER('')";
+	}
+
+	return `LOWER(COALESCE(${safeAlias}.manual_enrollment_status, ''))`;
+}
 
 db.serialize(() => {
-	db.run(
-		`ALTER TABLE patients ADD COLUMN manual_enrollment_status TEXT`,
-		(alterErr) => {
-			if (
-				alterErr &&
-				!String(alterErr.message || "").includes(
-					"duplicate column name",
+	db.all(`PRAGMA table_info(patients)`, (pragmaErr, columns) => {
+		if (pragmaErr) {
+			console.error(
+				"Could not inspect patients table schema:",
+				pragmaErr.message,
+			);
+			return;
+		}
+
+		manualEnrollmentStatusColumnAvailable = Array.isArray(columns)
+			? columns.some(
+					(column) =>
+						String(column && column.name) ===
+						"manual_enrollment_status",
 				)
-			) {
-				console.error(
-					"Could not ensure patients.manual_enrollment_status column:",
-					alterErr.message,
-				);
-			}
-		},
-	);
+			: false;
+
+		if (manualEnrollmentStatusColumnAvailable) {
+			return;
+		}
+
+		db.run(
+			`ALTER TABLE patients ADD COLUMN manual_enrollment_status TEXT`,
+			(alterErr) => {
+				if (alterErr) {
+					if (
+						String(alterErr.message || "").includes(
+							"duplicate column name",
+						)
+					) {
+						manualEnrollmentStatusColumnAvailable = true;
+						return;
+					}
+
+					console.error(
+						"Could not ensure patients.manual_enrollment_status column:",
+						alterErr.message,
+					);
+					return;
+				}
+
+				manualEnrollmentStatusColumnAvailable = true;
+			},
+		);
+	});
 
 	db.run(`
 		CREATE TABLE IF NOT EXISTS audit_logs (
@@ -377,94 +416,113 @@ function updatePatientStatus(patientId, inputStatus, callback) {
 		return;
 	}
 
+	function continueWithLinkedEnrollmentUpdates() {
+		db.get(
+			`SELECT
+					(SELECT enrollment_id FROM enrollment WHERE patient_id = ? ORDER BY enrollment_id DESC LIMIT 1) AS latest_enrollment_id,
+					(SELECT match_id FROM patient_trial_matches WHERE patient_id = ? ORDER BY match_id DESC LIMIT 1) AS latest_match_id
+				`,
+			[patientId, patientId],
+			(err, row) => {
+				if (err) {
+					callback(err);
+					return;
+				}
+
+				const latestEnrollmentId = row && row.latest_enrollment_id;
+				const latestMatchId = row && row.latest_match_id;
+
+				let updateSql = "";
+				let updateParams = [];
+
+				if (
+					normalizedStatus === "screening" ||
+					normalizedStatus === "enrolled"
+				) {
+					if (latestEnrollmentId) {
+						updateSql = `UPDATE enrollment SET enrollment_status = ? WHERE enrollment_id = ?`;
+						updateParams = [
+							normalizedStatus === "screening"
+								? "Screening"
+								: "Enrolled",
+							latestEnrollmentId,
+						];
+					} else if (
+						normalizedStatus === "screening" &&
+						latestMatchId
+					) {
+						updateSql = `UPDATE patient_trial_matches SET eligibility_status = ? WHERE match_id = ?`;
+						updateParams = ["Pending", latestMatchId];
+					} else {
+						callback(null);
+						return;
+					}
+				} else if (normalizedStatus === "eligible") {
+					if (!latestMatchId) {
+						callback(null);
+						return;
+					}
+
+					updateSql = `UPDATE patient_trial_matches SET eligibility_status = ? WHERE match_id = ?`;
+					updateParams = ["Eligible", latestMatchId];
+				} else if (normalizedStatus === "not-eligible") {
+					if (latestMatchId) {
+						updateSql = `UPDATE patient_trial_matches SET eligibility_status = ? WHERE match_id = ?`;
+						updateParams = ["Ineligible", latestMatchId];
+					} else if (latestEnrollmentId) {
+						updateSql = `UPDATE enrollment SET enrollment_status = ? WHERE enrollment_id = ?`;
+						updateParams = ["Rejected", latestEnrollmentId];
+					} else {
+						callback(null);
+						return;
+					}
+				} else if (normalizedStatus === "hold") {
+					if (!latestEnrollmentId) {
+						callback(null);
+						return;
+					}
+
+					updateSql = `UPDATE enrollment SET enrollment_status = ? WHERE enrollment_id = ?`;
+					updateParams = ["Withdrawn", latestEnrollmentId];
+				}
+
+				db.run(updateSql, updateParams, (updateErr) => {
+					if (updateErr) {
+						callback(updateErr);
+						return;
+					}
+
+					callback(null);
+				});
+			},
+		);
+	}
+
+	if (!manualEnrollmentStatusColumnAvailable) {
+		continueWithLinkedEnrollmentUpdates();
+		return;
+	}
+
 	db.run(
 		`UPDATE patients SET manual_enrollment_status = ? WHERE patient_id = ?`,
 		[normalizedStatus, patientId],
 		(manualStatusErr) => {
 			if (manualStatusErr) {
+				if (
+					String(manualStatusErr.message || "")
+						.toLowerCase()
+						.includes("no such column")
+				) {
+					manualEnrollmentStatusColumnAvailable = false;
+					continueWithLinkedEnrollmentUpdates();
+					return;
+				}
+
 				callback(manualStatusErr);
 				return;
 			}
 
-			db.get(
-				`SELECT
-					(SELECT enrollment_id FROM enrollment WHERE patient_id = ? ORDER BY enrollment_id DESC LIMIT 1) AS latest_enrollment_id,
-					(SELECT match_id FROM patient_trial_matches WHERE patient_id = ? ORDER BY match_id DESC LIMIT 1) AS latest_match_id
-				`,
-				[patientId, patientId],
-				(err, row) => {
-					if (err) {
-						callback(err);
-						return;
-					}
-
-					const latestEnrollmentId = row && row.latest_enrollment_id;
-					const latestMatchId = row && row.latest_match_id;
-
-					let updateSql = "";
-					let updateParams = [];
-
-					if (
-						normalizedStatus === "screening" ||
-						normalizedStatus === "enrolled"
-					) {
-						if (latestEnrollmentId) {
-							updateSql = `UPDATE enrollment SET enrollment_status = ? WHERE enrollment_id = ?`;
-							updateParams = [
-								normalizedStatus === "screening"
-									? "Screening"
-									: "Enrolled",
-								latestEnrollmentId,
-							];
-						} else if (
-							normalizedStatus === "screening" &&
-							latestMatchId
-						) {
-							updateSql = `UPDATE patient_trial_matches SET eligibility_status = ? WHERE match_id = ?`;
-							updateParams = ["Pending", latestMatchId];
-						} else {
-							callback(null);
-							return;
-						}
-					} else if (normalizedStatus === "eligible") {
-						if (!latestMatchId) {
-							callback(null);
-							return;
-						}
-
-						updateSql = `UPDATE patient_trial_matches SET eligibility_status = ? WHERE match_id = ?`;
-						updateParams = ["Eligible", latestMatchId];
-					} else if (normalizedStatus === "not-eligible") {
-						if (latestMatchId) {
-							updateSql = `UPDATE patient_trial_matches SET eligibility_status = ? WHERE match_id = ?`;
-							updateParams = ["Ineligible", latestMatchId];
-						} else if (latestEnrollmentId) {
-							updateSql = `UPDATE enrollment SET enrollment_status = ? WHERE enrollment_id = ?`;
-							updateParams = ["Rejected", latestEnrollmentId];
-						} else {
-							callback(null);
-							return;
-						}
-					} else if (normalizedStatus === "hold") {
-						if (!latestEnrollmentId) {
-							callback(null);
-							return;
-						}
-
-						updateSql = `UPDATE enrollment SET enrollment_status = ? WHERE enrollment_id = ?`;
-						updateParams = ["Withdrawn", latestEnrollmentId];
-					}
-
-					db.run(updateSql, updateParams, (updateErr) => {
-						if (updateErr) {
-							callback(updateErr);
-							return;
-						}
-
-						callback(null);
-					});
-				},
-			);
+			continueWithLinkedEnrollmentUpdates();
 		},
 	);
 }
@@ -923,6 +981,8 @@ app.post("/system/restore", async (req, res) => {
 });
 
 app.get("/patients", (req, res) => {
+	const manualEnrollmentStatusSql = getManualEnrollmentStatusSql("p");
+
 	db.all(
 		`WITH latest_match AS (
 			SELECT m.patient_id, m.trial_id, m.eligibility_status
@@ -965,8 +1025,8 @@ app.get("/patients", (req, res) => {
 			COALESCE(dis.disease_name, trial_dis.disease_name, 'Not recorded') AS disease,
 			COALESCE(ct.trial_title, '') AS trial,
 			CASE
-				WHEN LOWER(COALESCE(p.manual_enrollment_status, '')) IN ('screening', 'eligible', 'enrolled', 'hold', 'not-eligible')
-					THEN LOWER(COALESCE(p.manual_enrollment_status, ''))
+				WHEN ${manualEnrollmentStatusSql} IN ('screening', 'eligible', 'enrolled', 'hold', 'not-eligible')
+					THEN ${manualEnrollmentStatusSql}
 				WHEN LOWER(COALESCE(en.enrollment_status, '')) IN ('enrolled', 'completed') THEN 'enrolled'
 				WHEN LOWER(COALESCE(en.enrollment_status, '')) = 'screening' THEN 'screening'
 				WHEN LOWER(COALESCE(en.enrollment_status, '')) IN ('withdrawn', 'rejected') THEN 'not-eligible'
@@ -1001,6 +1061,7 @@ app.get("/patients", (req, res) => {
 
 app.get("/patients/:id", (req, res) => {
 	const patientId = Number(req.params.id);
+	const manualEnrollmentStatusSql = getManualEnrollmentStatusSql("p");
 
 	if (!Number.isInteger(patientId) || patientId <= 0) {
 		res.status(400).json({ error: "Invalid patient ID" });
@@ -1049,8 +1110,8 @@ app.get("/patients/:id", (req, res) => {
 			COALESCE(dis.disease_name, trial_dis.disease_name, 'Not recorded') AS disease,
 			COALESCE(ct.trial_title, '') AS trial,
 			CASE
-				WHEN LOWER(COALESCE(p.manual_enrollment_status, '')) IN ('screening', 'eligible', 'enrolled', 'hold', 'not-eligible')
-					THEN LOWER(COALESCE(p.manual_enrollment_status, ''))
+				WHEN ${manualEnrollmentStatusSql} IN ('screening', 'eligible', 'enrolled', 'hold', 'not-eligible')
+					THEN ${manualEnrollmentStatusSql}
 				WHEN LOWER(COALESCE(en.enrollment_status, '')) IN ('enrolled', 'completed') THEN 'enrolled'
 				WHEN LOWER(COALESCE(en.enrollment_status, '')) = 'screening' THEN 'screening'
 				WHEN LOWER(COALESCE(en.enrollment_status, '')) IN ('withdrawn', 'rejected') THEN 'not-eligible'
